@@ -14,11 +14,11 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const baseStyles = "inline-flex items-center justify-center rounded-2xl font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none shadow-[0_4px_0_0_rgba(0,0,0,0.2)] active:shadow-none active:translate-y-[4px]";
     
     const variants = {
-      primary: "bg-[#58cc02] text-white hover:bg-[#46a302] shadow-[#46a302]", // Duolingo Green
-      secondary: "bg-[#1cb0f6] text-white hover:bg-[#1899d6] shadow-[#1899d6]", // Duolingo Blue
-      outline: "border-2 border-slate-200 bg-white text-slate-500 hover:bg-slate-50 shadow-slate-200",
-      danger: "bg-[#ff4b4b] text-white hover:bg-[#d40000] shadow-[#d40000]",
-      ghost: "bg-transparent text-slate-500 hover:bg-slate-100 shadow-none active:translate-y-0",
+      primary: "bg-primary text-primary-foreground hover:opacity-90 shadow-primary/50",
+      secondary: "bg-secondary text-secondary-foreground hover:opacity-90 shadow-secondary/50",
+      outline: "border-2 border-border bg-background text-foreground hover:bg-muted shadow-border/50",
+      danger: "bg-destructive text-destructive-foreground hover:opacity-90 shadow-destructive/50",
+      ghost: "bg-transparent text-foreground hover:bg-muted shadow-none active:translate-y-0",
     };
 
     const sizes = {

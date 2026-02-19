@@ -5,8 +5,8 @@ import * as THREE from "three";
 import { useAvatarAnimation } from "../hooks/useAvatarAnimation";
 
 // Preload the model to avoid pop-in
-// Using a default Ready Player Me avatar for testing
-const MODEL_URL = "https://models.readyplayer.me/64b73b547846109e200388bc.glb";
+// Using a local demo RiggedFigure avatar
+const MODEL_URL = "/models/avatar.glb";
 useGLTF.preload(MODEL_URL);
 
 function Avatar() {

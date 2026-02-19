@@ -13,8 +13,8 @@ export function RiveMascot() {
   const { status, combo } = useLessonStore();
 
   const { rive, RiveComponent } = useRive({
-    src: "https://public.rive.app/community/runtime-files/2191-4327-loader-solos-test.riv", // A known working test file
-    stateMachines: "State Machine 1",
+    src: "/models/mascot.riv",
+    stateMachines: "bumpy",
     autoplay: true,
   });
 

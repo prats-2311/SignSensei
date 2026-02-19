@@ -8,13 +8,13 @@ interface ProgressBarProps {
   color?: string;
 }
 
-export function ProgressBar({ value, max = 100, className, color = "#58cc02" }: ProgressBarProps) {
+export function ProgressBar({ value, max = 100, className, color = "var(--color-primary)" }: ProgressBarProps) {
   const percentage = Math.min(100, Math.max(0, (value / max) * 100));
 
   return (
     <div
       className={cn(
-        "h-4 w-full overflow-hidden rounded-full bg-slate-200",
+        "h-4 w-full overflow-hidden rounded-full bg-muted",
         className
       )}
     >
