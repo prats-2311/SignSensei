@@ -46,13 +46,27 @@ npm run dev
 ```
 *App will run at `http://localhost:5173`*
 
-### 3. Backend Setup
+### 3. Google Cloud Authentication (Required for Backend)
+The backend uses Application Default Credentials (ADC) to mint ephemeral Gemini API tokens securely.
+
+1.  **Install Google Cloud CLI:** Follow the instructions for your OS at [Google Cloud Docs](https://cloud.google.com/sdk/docs/install).
+    *   *macOS/Homebrew:* `brew install --cask google-cloud-sdk`
+2.  **Initialize & Authenticate:**
+    ```bash
+    gcloud init
+    # (Select your project, e.g., 'SignSensei-Live')
+    
+    gcloud auth application-default login
+    # (Log in via browser to save local credentials)
+    ```
+
+### 4. Backend Setup
 ```bash
 cd backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-python main.py
+uvicorn main:app --reload
 ```
 *API will run at `http://localhost:8000`*
 
