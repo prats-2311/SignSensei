@@ -8,7 +8,7 @@ interface GeminiTokenResponse {
 }
 
 const API_LOCATION = "us-central1"; 
-const MODEL_NAME = "gemini-2.0-flash-exp"; 
+const MODEL_NAME = "gemini-live-2.5-flash-native-audio"; 
 
 export function useGeminiLive() {
   const [isConnected, setIsConnected] = useState(false);
@@ -29,7 +29,7 @@ export function useGeminiLive() {
       if (!res.ok) throw new Error('Failed to fetch authentication token');
       const data: GeminiTokenResponse = await res.json();
       
-      const WS_URL = `wss://${API_LOCATION}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmUtilityService/StreamDirectPredict?bearer_token=${data.token}`;
+      const WS_URL = `wss://${API_LOCATION}-aiplatform.googleapis.com/ws/google.cloud.aiplatform.v1beta1.LlmBidiService/BidiGenerateContent?bearer_token=${data.token}`;
       
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
@@ -58,14 +58,29 @@ export function useGeminiLive() {
               {
                 functionDeclarations: [
                   {
-                    name: "update_avatar_state",
-                    description: "Triggers a specific 3D avatar animation state.",
+                    name: "show_sign_reference",
+                    description: "Shows a video of a real human performing a specific ASL sign to help the user learn.",
+                    parameters: {
+                      type: "OBJECT",
+                      properties: {
+                        sign_name: {
+                          type: "STRING",
+                          description: "The name of the sign to show.",
+                          enum: ["hello", "thank_you", "yes", "no", "apple"]
+                        }
+                      },
+                      required: ["sign_name"]
+                    }
+                  },
+                  {
+                    name: "trigger_rive_emotion",
+                    description: "Triggers the 2D mascot to show a specific emotional reaction.",
                     parameters: {
                       type: "OBJECT",
                       properties: {
                         state: {
                           type: "STRING",
-                          enum: ["idle", "thumbs_up", "head_shake"]
+                          enum: ["idle", "success", "error", "listening"]
                         }
                       },
                       required: ["state"]
@@ -102,6 +117,7 @@ export function useGeminiLive() {
             const parts = msg.serverContent.modelTurn.parts;
             for (const part of parts) {
               if (part.inlineData && part.inlineData.mimeType.startsWith('audio/pcm')) {
+                console.log(`Received audio chunk length: ${part.inlineData.data.length}`);
                 if (onAudioData) onAudioData(part.inlineData.data);
               }
             }
@@ -114,17 +130,28 @@ export function useGeminiLive() {
             const responses: any[] = [];
 
             for (const call of calls) {
-              if (call.name === 'update_avatar_state') {
+              if (call.name === 'trigger_rive_emotion') {
                 const args = call.args as any;
-                if (args.state === 'thumbs_up') {
-                   incrementXP(10);
-                   setFeedback("Excellent signing!", "success");
-                } else if (args.state === 'head_shake') {
-                   resetCombo();
-                   setFeedback("Not quite right, let's try again.", "error");
+                useLessonStore.getState().setMascotEmotion(args.state);
+                
+                // Keep the XP/Feedback logic tied to the emotion for now
+                if (args.state === 'success') {
+                   useLessonStore.getState().incrementXP(10);
+                   useLessonStore.getState().setFeedback("Excellent signing!", "success");
+                } else if (args.state === 'error') {
+                   useLessonStore.getState().resetCombo();
+                   useLessonStore.getState().setFeedback("Not quite right, let's try again.", "error");
                 } else if (args.state === 'idle') {
-                   setFeedback("", "idle");
+                   useLessonStore.getState().setFeedback("", "idle");
                 }
+                
+                responses.push({
+                   id: call.id,
+                   response: { result: "ok" }
+                });
+              } else if (call.name === 'show_sign_reference') {
+                const args = call.args as any;
+                useLessonStore.getState().setReferenceSign(args.sign_name);
                 
                 responses.push({
                    id: call.id,
@@ -153,8 +180,8 @@ export function useGeminiLive() {
         setIsConnecting(false);
       };
 
-      ws.onclose = () => {
-        console.log("WebSocket connection closed.");
+      ws.onclose = (event) => {
+        console.log("WebSocket connection closed.", event.code, event.reason);
         setIsConnected(false);
       };
 

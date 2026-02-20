@@ -11,7 +11,7 @@ import { LiveSession } from './features/live-session/components/LiveSession';
 
 function App() {
   const { streak, gems } = useUserStore();
-  const { xp } = useLessonStore();
+  const { xp, referenceSign, setReferenceSign } = useLessonStore();
   const [sessionStarted, setSessionStarted] = useState(false);
   
   // Calculate progress based on XP (mock logic: 100 XP per level)
@@ -46,7 +46,7 @@ function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="pt-20 pb-24 px-4 max-w-md mx-auto space-y-6">
+      <main className="pt-20 pb-40 px-4 max-w-md mx-auto space-y-6">
         
         {/* Lesson Progress Card */}
         <Card className="border-none shadow-none bg-transparent">
@@ -86,16 +86,40 @@ function App() {
           )}
         </div>
         
-        {/* 3D Avatar Overlay */}
-        <div className="fixed bottom-0 left-0 right-0 h-[400px] z-0 pointer-events-none">
-           <AvatarCanvas />
-        </div>
+        {/* 3D Avatar Background (Decorative) */}
+        {!sessionStarted && !referenceSign && (
+          <div className="relative w-full h-[350px] z-0 pointer-events-none mt-8">
+             <AvatarCanvas />
+          </div>
+        )}
 
-        {/* Rive Mascot Overlay */}
+        {/* Space explicitly reserved so user can scroll past the bottom UI */}
+        <div className="h-32 w-full shrink-0" aria-hidden="true" />
+
+        {/* Rive Mascot Overlay (Always Visible during session) */}
         <div className="fixed bottom-20 right-4 z-10 pointer-events-none">
            <RiveMascot />
         </div>
       </main>
+
+      {/* Sign Reference Modal (Rendered above everything at root level) */}
+      {referenceSign && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+           <div className="bg-card w-full max-w-sm rounded-3xl border border-border overflow-hidden relative shadow-2xl">
+             <div className="p-4 border-b border-border flex justify-between items-center bg-muted/50">
+               <h3 className="font-bold text-foreground capitalize">
+                  {referenceSign.replace(/_/g, ' ')}
+               </h3>
+               <Button variant="ghost" size="sm" onClick={() => setReferenceSign(null)}>
+                  Close
+               </Button>
+             </div>
+             <div className="relative h-[300px] w-full bg-background/50">
+               <AvatarCanvas signName={referenceSign} isModalContext={true} />
+             </div>
+           </div>
+        </div>
+      )}
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border px-6 py-4 flex justify-between items-center z-50">

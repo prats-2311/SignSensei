@@ -54,21 +54,33 @@ export class AudioManager {
   }
 
   stopRecording() {
-    if (this.processor && this.source) {
-      this.source.disconnect(this.processor);
-      this.processor.disconnect();
+    try {
+      if (this.source) this.source.disconnect();
+      if (this.processor) this.processor.disconnect();
+    } catch (e) {
+      console.warn("Audio disconnect error:", e);
     }
+
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach(track => track.stop());
     }
-    if (this.context) {
-       this.context.close();
-       this.context = null;
+    if (this.context && this.context.state !== 'closed') {
+       this.context.close().catch(console.error);
     }
+    
+    this.source = null;
+    this.processor = null;
+    this.mediaStream = null;
+    this.context = null;
   }
 
-  playChunk(base64Data: string) {
+  async playChunk(base64Data: string) {
     if (!this.context) return;
+    
+    // Browsers often suspend AudioContexts until user interaction. Ensure it's active.
+    if (this.context.state === 'suspended') {
+      await this.context.resume();
+    }
     
     const binary = window.atob(base64Data);
     const bytes = new Uint8Array(binary.length);
@@ -87,7 +99,13 @@ export class AudioManager {
     
     const source = this.context.createBufferSource();
     source.buffer = audioBuffer;
-    source.connect(this.context.destination);
+    
+    // Add a GainNode to boost the natively quiet Gemini audio output
+    const gainNode = this.context.createGain();
+    gainNode.gain.value = 3.0; // 300% volume boost
+    
+    source.connect(gainNode);
+    gainNode.connect(this.context.destination);
     
     if (this.nextPlayTime < this.context.currentTime) {
       this.nextPlayTime = this.context.currentTime;

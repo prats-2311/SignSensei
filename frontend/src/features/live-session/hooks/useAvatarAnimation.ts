@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { AnimationAction, AnimationMixer, LoopRepeat } from "three";
 import { useLessonStore } from "../../../stores/useLessonStore";
 
@@ -8,50 +8,44 @@ type AnimationMap = {
 
 export function useAvatarAnimation(
   actions: AnimationMap, 
-  mixer: AnimationMixer, 
-  defaultAnim = "Idle",
-  successAnim = "ThumbsUp",
-  failAnim = "HeadShake" // or similar
+  mixer: AnimationMixer | null
 ) {
   const { status } = useLessonStore();
+  const currentActionRef = useRef<AnimationAction | null>(null);
 
   useEffect(() => {
-    // Determine which animation to play based on status
-    let targetAnimName = defaultAnim;
+    // If no actions are loaded yet, do nothing
+    if (!actions || Object.keys(actions).length === 0) return;
 
-    if (status === "success") targetAnimName = successAnim;
-    if (status === "error") targetAnimName = failAnim;
-    if (status === "listening") targetAnimName = "Listening"; // if available
+    // Get the primary animation (the only one in our demo GLB)
+    const animationNames = Object.keys(actions);
+    const targetAnimName = animationNames[0]; // Just play the first one we find
+    
+    if (!targetAnimName) return;
 
     const targetAction = actions[targetAnimName];
-    const currentAction = actions[defaultAnim]; // Simplified: Assume we always fade back to idle or from idle
 
-    if (targetAction) {
-      // Reset and play target
-      targetAction.reset().fadeIn(0.5).play();
+    if (targetAction && targetAction !== currentActionRef.current) {
+      if (currentActionRef.current) {
+         currentActionRef.current.fadeOut(0.5);
+      }
       
-      // Cross-fade from current/default if it's playing and different
-      if (currentAction && currentAction !== targetAction) {
-        currentAction.fadeOut(0.5);
-      }
-
-      // If we are switching TO a special action (Success/Fail), we usually want it to play once then go back to Idle
-      if (status === 'success' || status === 'error') {
-        targetAction.setLoop(LoopRepeat, 1);
-        targetAction.clampWhenFinished = true;
-        
-        // Note: Realistically we'd want a callback or timeout to reset 'status' to 'idle' in the store
-      } else {
-         targetAction.setLoop(LoopRepeat, Infinity);
-      }
+      console.log("PLAYING ANIMATION:", targetAnimName);
+      targetAction.reset();
+      targetAction.setEffectiveTimeScale(1);
+      targetAction.setEffectiveWeight(1);
+      targetAction.play();
+      targetAction.setLoop(LoopRepeat, Infinity);
+      
+      currentActionRef.current = targetAction;
     }
 
-    // Capture the current status to handle cleanup/fading out previous actions
+    // Capture the current status to handle cleanup
     return () => {
-       if (targetAction) {
-         targetAction.fadeOut(0.5);
+       if (currentActionRef.current) {
+         currentActionRef.current.fadeOut(0.5);
        }
     };
 
-  }, [status, actions, mixer, defaultAnim, successAnim, failAnim]);
+  }, [status, actions, mixer]);
 }

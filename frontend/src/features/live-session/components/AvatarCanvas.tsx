@@ -1,58 +1,33 @@
-import { Canvas } from "@react-three/fiber";
-import { Environment, useGLTF, useAnimations } from "@react-three/drei";
-import { useEffect, useRef } from "react";
-import * as THREE from "three";
-import { useAvatarAnimation } from "../hooks/useAvatarAnimation";
+import { useRef } from 'react';
 
-// Preload the model to avoid pop-in
-// Using a local demo RiggedFigure avatar
-const MODEL_URL = "/models/avatar.glb";
-useGLTF.preload(MODEL_URL);
-
-function Avatar() {
-  const group = useRef<THREE.Group>(null);
-  const { scene, animations } = useGLTF(MODEL_URL);
-  // const { status } = useLessonStore(); // Moved to hook
-  
-  // Connect the store state to animations
-  // Note: 'mixer' is available from the useAnimations hook under the hood, but the hook returns { actions, mixer }
-  // We need to cast or access it if we want to pass it explicitly, but usually actions are bound to the internal mixer.
-  // Actually, useAnimations returns { actions, names, ref, mixer }.
-  // Let's check how we called it: const { actions } = useAnimations(animations, group);
-  // We can just get mixer from there.
-  
-  const { actions: animationActions, mixer } = useAnimations(animations, group);
-
-  useAvatarAnimation(animationActions as any, mixer, "Idle", "ThumbsUp", "HeadShake");
-
-  useEffect(() => {
-     // Debug logging
-     if (animationActions) {
-        console.log("Available Avatar Animations:", Object.keys(animationActions));
-     }
-  }, [animationActions]);
-
-  return (
-    <group ref={group} dispose={null} position={[0, -2, 0]}>
-      <primitive object={scene} scale={2} />
-    </group>
-  );
+interface AvatarCanvasProps {
+  signName?: string;
+  isModalContext?: boolean;
 }
 
-export function AvatarCanvas() {
+export function AvatarCanvas({ signName, isModalContext = false }: AvatarCanvasProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Dynamically resolve the URL based on the requested sign, fallback to placeholder
+  const videoUrl = signName 
+    ? `/videos/signs/${signName}.mp4` 
+    : "/videos/signs/hello.mp4"; // Default placeholder when idle
+
+  const containerClass = isModalContext 
+    ? "w-full h-full min-h-[300px] flex items-center justify-center bg-background/50 rounded-b-xl overflow-hidden" 
+    : "w-full h-full absolute bottom-0 left-0 z-0 pointer-events-none flex items-end justify-center opacity-80 mix-blend-multiply dark:mix-blend-screen";
+
   return (
-    <div className="w-full h-[400px] absolute bottom-0 left-0 z-0 pointer-events-none">
-      <Canvas camera={{ position: [0, 0, 5], fov: 40 }}>
-        <ambientLight intensity={0.7} />
-        <spotLight position={[10, 10, 10]} angle={0.15} penumbra={1} />
-        <pointLight position={[-10, -10, -10]} />
-        
-        <Avatar />
-        
-        <Environment preset="city" />
-        {/* OrbitControls allowed for debugging, but pointer-events-none on container prevents interaction by default */}
-        {/* <OrbitControls enableZoom={false} /> */}
-      </Canvas>
+    <div className={containerClass}>
+       <video 
+         ref={videoRef}
+         src={videoUrl}
+         autoPlay 
+         loop 
+         muted 
+         playsInline
+         className={`object-cover shadow-inner ${isModalContext ? 'w-full h-full' : 'h-[350px] rounded-t-[100px]'}`}
+       />
     </div>
   );
 }

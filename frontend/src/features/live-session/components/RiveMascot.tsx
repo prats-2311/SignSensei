@@ -10,7 +10,7 @@ import { useLessonStore } from '../../../stores/useLessonStore';
 // I will use a placeholder URL that I know works for testing basic load.
 
 export function RiveMascot() {
-  const { status, combo } = useLessonStore();
+  const { mascotEmotion, combo } = useLessonStore();
 
   const { rive, RiveComponent } = useRive({
     src: "/models/mascot.riv",
@@ -24,13 +24,13 @@ export function RiveMascot() {
 
   useEffect(() => {
     if (rive) {
-      // Logic to trigger Rive inputs based on 'status'
-      // if (status === 'success' && isHappyInput) isHappyInput.value = true;
-      // if (status === 'error' && isHappyInput) isHappyInput.value = false;
+      // Logic to trigger Rive inputs based on 'mascotEmotion'
+      // if (mascotEmotion === 'success' && isHappyInput) isHappyInput.value = true;
+      // if (mascotEmotion === 'error' && isHappyInput) isHappyInput.value = false;
       
-      console.log("Rive Mascot Logic Triggered:", status, combo);
+      console.log("Rive Mascot Logic Triggered:", mascotEmotion, combo);
     }
-  }, [status, combo, rive]);
+  }, [mascotEmotion, combo, rive]);
 
   return (
     <div className="w-32 h-32 absolute bottom-20 right-4 pointer-events-none z-10 filter drop-shadow-xl">

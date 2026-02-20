@@ -7,11 +7,17 @@ interface LessonState {
   feedback: string | null;
   status: 'idle' | 'listening' | 'success' | 'error';
   
+  // New split architecture states
+  referenceSign: string | null;
+  mascotEmotion: 'idle' | 'success' | 'error' | 'listening';
+  
   // Actions
   incrementXP: (amount: number) => void;
   resetCombo: () => void;
   setFeedback: (message: string, status: LessonState['status']) => void;
   setCurrentSign: (sign: string) => void;
+  setReferenceSign: (sign: string | null) => void;
+  setMascotEmotion: (emotion: LessonState['mascotEmotion']) => void;
   resetLesson: () => void;
 }
 
@@ -21,24 +27,33 @@ export const useLessonStore = create<LessonState>((set) => ({
   currentSign: '',
   feedback: null,
   status: 'idle',
+  referenceSign: null,
+  mascotEmotion: 'idle',
 
   incrementXP: (amount) => set((state) => ({ 
     xp: state.xp + amount,
     combo: state.combo + 1,
-    status: 'success'
+    status: 'success',
+    mascotEmotion: 'success'
   })),
 
-  resetCombo: () => set({ combo: 0, status: 'error' }),
+  resetCombo: () => set({ combo: 0, status: 'error', mascotEmotion: 'error' }),
 
   setFeedback: (message, status) => set({ feedback: message, status }),
 
   setCurrentSign: (sign) => set({ currentSign: sign }),
+
+  setReferenceSign: (sign) => set({ referenceSign: sign }),
+
+  setMascotEmotion: (emotion) => set({ mascotEmotion: emotion }),
 
   resetLesson: () => set({ 
     xp: 0, 
     combo: 0, 
     currentSign: '', 
     feedback: null, 
-    status: 'idle' 
+    status: 'idle',
+    referenceSign: null,
+    mascotEmotion: 'idle'
   }),
 }));

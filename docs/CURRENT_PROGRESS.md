@@ -9,13 +9,14 @@
 - **Authentication:** Successfully configured Google Cloud ADC and created an endpoint (`/api/token`) that securely mints ephemeral Gemini tokens.
 - **Live WebSocket Hook:** Created the `useGeminiLive.ts` hook capable of connecting to the Multimodal API, sending a BidiSetup message, and streaming base64 media.
 - **UI Theming:** Implemented native Tailwind CSS v4 variables (e.g., `bg-primary`, `text-card-foreground`) and stripped all hardcoded colors from components.
+- **Hardware Integration:** successfully tested browser microphone and webcam permissions.
+- **Gemini Handshake:** Successfully established BidiGenerateContent connection targeting `gemini-live-2.5-flash-native-audio` on Vertex AI.
+- **AI Tool Calling:** Successfully passed the `update_avatar_state` schema to Gemini and verified it triggers Zustand UI state updates (XP increase, animations) based on voice commands.
 
 ## 🟡 Current Status (In Progress)
-The UI is fully themed and looks great in both light and dark mode. The WebSocket foundation is laid out. We are currently preparing to test the integration between the browser's hardware APIs (`navigator.mediaDevices`), our `useGeminiLive.ts` WebSockets, and the Gemini Server.
+The core infrastructure for the Live AI Tutor is fully functional! We have a stable WebSocket connection, the ability to stream audio/video to the model, and the model is successfully firing JSON tool calls that govern our UI state. The next major phase is converting the AI's logic to control the actual 3D avatar and structuring the exercise logic using the `CURRENT_PROGRESS.md` steps.
 
 ## 🔴 Immediate Next Steps
-1. Test the microphone and webcam permissions in the browser.
-2. Confirm that the `AudioManager` is successfully tracking 16kHz PCM audio chunks.
-3. Establish the first live connection to Gemini and capture the "System Ready" green status pulse in the UI.
-4. Implement the parsing logic in `useGeminiLive.ts` to decode incoming AI Audio chunks and play them back in the browser.
-5. Setup the tool-calling handlers so the 3D Avatar (Three.js) responds to Gemini's commands.
+1. Playback AI Audio: Implement the parsing logic in `useGeminiLive.ts` to decode incoming AI Audio chunks and play them back in the browser smoothly using the `AudioManager`.
+2. Connect 3D Avatar (Three.js): Map the `update_avatar_state` tool calls to explicitly drive the React Three Fiber model's animation mixer.
+3. Rive Integration: Wire the smaller interactive mascot up to the same state triggers.
