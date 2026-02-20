@@ -19,14 +19,12 @@ export function ProgressBar({ value, max = 100, className, color = "var(--color-
       )}
     >
       <motion.div
-        className="h-full rounded-full transition-all"
+        className="h-full rounded-full"
         style={{ backgroundColor: color }}
         initial={{ width: 0 }}
         animate={{ width: `${percentage}%` }}
         transition={{ type: "spring", stiffness: 100, damping: 20 }}
-      >
-        <div className="h-full w-full bg-white/20 opacity-30 rounded-full mt-1 ml-2 transform scale-x-90 origin-left" />
-      </motion.div>
+      />
     </div>
   );
 }

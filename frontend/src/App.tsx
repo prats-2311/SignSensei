@@ -8,10 +8,12 @@ import { Button } from './shared/ui/Button';
 import { AvatarCanvas } from './features/live-session/components/AvatarCanvas';
 import { RiveMascot } from './features/live-session/components/RiveMascot';
 import { LiveSession } from './features/live-session/components/LiveSession';
+import { AudioHapticController } from './shared/ui/AudioHapticController';
+import { VictoryModal } from './shared/ui/VictoryModal';
 
 function App() {
   const { streak, gems } = useUserStore();
-  const { xp, referenceSign, setReferenceSign } = useLessonStore();
+  const { xp, referenceSign, setReferenceSign, isLessonComplete, resetLesson } = useLessonStore();
   const [sessionStarted, setSessionStarted] = useState(false);
   
   // Calculate progress based on XP (mock logic: 100 XP per level)
@@ -20,6 +22,9 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary selection:text-primary-foreground">
+      {/* Headless Audio & Haptics Observer */}
+      <AudioHapticController />
+      
       {/* Top Bar: Stats */}
       <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-3 bg-background/90 backdrop-blur-md border-b border-border">
         <div className="flex items-center space-x-4">
@@ -101,6 +106,16 @@ function App() {
            <RiveMascot />
         </div>
       </main>
+
+      {/* Post-Lesson Gamification Screen */}
+      {isLessonComplete && (
+        <VictoryModal 
+          onContinue={() => {
+            resetLesson();
+            setSessionStarted(false);
+          }} 
+        />
+      )}
 
       {/* Sign Reference Modal (Rendered above everything at root level) */}
       {referenceSign && (

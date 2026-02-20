@@ -10,6 +10,7 @@ interface LessonState {
   // New split architecture states
   referenceSign: string | null;
   mascotEmotion: 'idle' | 'success' | 'error' | 'listening';
+  isLessonComplete: boolean;
   
   // Actions
   incrementXP: (amount: number) => void;
@@ -18,6 +19,7 @@ interface LessonState {
   setCurrentSign: (sign: string) => void;
   setReferenceSign: (sign: string | null) => void;
   setMascotEmotion: (emotion: LessonState['mascotEmotion']) => void;
+  setLessonComplete: (isComplete: boolean) => void;
   resetLesson: () => void;
 }
 
@@ -29,6 +31,7 @@ export const useLessonStore = create<LessonState>((set) => ({
   status: 'idle',
   referenceSign: null,
   mascotEmotion: 'idle',
+  isLessonComplete: false,
 
   incrementXP: (amount) => set((state) => ({ 
     xp: state.xp + amount,
@@ -47,6 +50,8 @@ export const useLessonStore = create<LessonState>((set) => ({
 
   setMascotEmotion: (emotion) => set({ mascotEmotion: emotion }),
 
+  setLessonComplete: (isComplete) => set({ isLessonComplete: isComplete }),
+
   resetLesson: () => set({ 
     xp: 0, 
     combo: 0, 
@@ -54,6 +59,7 @@ export const useLessonStore = create<LessonState>((set) => ({
     feedback: null, 
     status: 'idle',
     referenceSign: null,
-    mascotEmotion: 'idle'
+    mascotEmotion: 'idle',
+    isLessonComplete: false
   }),
 }));

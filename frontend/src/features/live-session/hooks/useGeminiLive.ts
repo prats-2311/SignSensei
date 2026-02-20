@@ -65,8 +65,7 @@ export function useGeminiLive() {
                       properties: {
                         sign_name: {
                           type: "STRING",
-                          description: "The name of the sign to show.",
-                          enum: ["hello", "thank_you", "yes", "no", "apple"]
+                          description: "The name of the sign to show."
                         }
                       },
                       required: ["sign_name"]
@@ -85,6 +84,10 @@ export function useGeminiLive() {
                       },
                       required: ["state"]
                     }
+                  },
+                  {
+                    name: "finish_lesson",
+                    description: "Triggers the end-of-lesson victory screen when you determine the user has completed their practice session.",
                   }
                 ]
               }
@@ -152,6 +155,13 @@ export function useGeminiLive() {
               } else if (call.name === 'show_sign_reference') {
                 const args = call.args as any;
                 useLessonStore.getState().setReferenceSign(args.sign_name);
+                
+                responses.push({
+                   id: call.id,
+                   response: { result: "ok" }
+                });
+              } else if (call.name === 'finish_lesson') {
+                useLessonStore.getState().setLessonComplete(true);
                 
                 responses.push({
                    id: call.id,
