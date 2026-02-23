@@ -25,7 +25,8 @@ export function useGeminiLive() {
     setIsConnecting(true);
     setError(null);
     try {
-      const res = await fetch('http://localhost:8000/api/token');
+      const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const res = await fetch(`${baseUrl}/api/token`);
       if (!res.ok) throw new Error('Failed to fetch authentication token');
       const data: GeminiTokenResponse = await res.json();
       
