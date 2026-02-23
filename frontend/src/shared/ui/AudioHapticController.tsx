@@ -4,7 +4,7 @@ import ConfettiExplosion from 'react-confetti-explosion';
 import { useLessonStore } from '../../stores/useLessonStore';
 
 export function AudioHapticController() {
-  const { mascotEmotion, status } = useLessonStore();
+  const { mascotEmotion } = useLessonStore();
   const [playSuccess] = useSound('/sounds/success.ogg', { volume: 0.5 });
   const [playError] = useSound('/sounds/error.ogg', { volume: 0.5 });
   const [isExploding, setIsExploding] = useState(false);
