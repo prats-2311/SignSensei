@@ -1,9 +1,14 @@
 export class AudioManager {
-  private context: AudioContext | null = null;
+  // --- RECORDING STATE ---
+  private recordingContext: AudioContext | null = null;
   private processor: ScriptProcessorNode | null = null;
   private mediaStream: MediaStream | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   
+  // --- PLAYBACK STATE ---
+  // We keep a secondary context strictly for playback so it survives 
+  // pausing/stopping the microphone.
+  private playbackContext: AudioContext | null = null;
   private nextPlayTime: number = 0;
 
   async startRecording(onAudioCallback: (base64String: string) => void) {
@@ -16,10 +21,10 @@ export class AudioManager {
       });
       
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      this.context = new AudioCtx({ sampleRate: 16000 }) as AudioContext;
-      this.source = this.context.createMediaStreamSource(this.mediaStream);
+      this.recordingContext = new AudioCtx({ sampleRate: 16000 }) as AudioContext;
+      this.source = this.recordingContext.createMediaStreamSource(this.mediaStream);
       
-      this.processor = this.context.createScriptProcessor(4096, 1, 1);
+      this.processor = this.recordingContext.createScriptProcessor(4096, 1, 1);
       
       this.processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
@@ -43,9 +48,9 @@ export class AudioManager {
         onAudioCallback(base64String);
       };
 
-      if (this.source && this.processor && this.context) {
+      if (this.source && this.processor && this.recordingContext) {
         this.source.connect(this.processor);
-        this.processor.connect(this.context.destination);
+        this.processor.connect(this.recordingContext.destination);
       }
       
     } catch (err) {
@@ -64,22 +69,50 @@ export class AudioManager {
     if (this.mediaStream) {
       this.mediaStream.getTracks().forEach(track => track.stop());
     }
-    if (this.context && this.context.state !== 'closed') {
-       this.context.close().catch(console.error);
+    if (this.recordingContext && this.recordingContext.state !== 'closed') {
+       this.recordingContext.close().catch(console.error);
     }
     
     this.source = null;
     this.processor = null;
     this.mediaStream = null;
-    this.context = null;
+    this.recordingContext = null;
+  }
+
+  clearPlaybackQueue() {
+      // Useful for "Barge-in". If the user interrupts, we reset the playback context
+      // to abruptly halt the current AudioBufferSourceNodes.
+      if (this.playbackContext && this.playbackContext.state !== 'closed') {
+          this.playbackContext.close().catch(console.error);
+      }
+      this.playbackContext = null;
+      this.nextPlayTime = 0;
+  }
+
+  initializePlaybackContext() {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!this.playbackContext || this.playbackContext.state === 'closed') {
+        this.playbackContext = new AudioCtx({ sampleRate: 16000 }) as AudioContext;
+        this.nextPlayTime = 0; // Reset
+    }
+    
+    // Resume immediately if suspended to satisfy browser policies during user click
+    if (this.playbackContext.state === 'suspended') {
+      this.playbackContext.resume();
+    }
   }
 
   async playChunk(base64Data: string) {
-    if (!this.context) return;
+    if (!this.playbackContext || this.playbackContext.state === 'closed') {
+        this.initializePlaybackContext();
+    }
+    
+    const ctx = this.playbackContext;
+    if (!ctx) return;
     
     // Browsers often suspend AudioContexts until user interaction. Ensure it's active.
-    if (this.context.state === 'suspended') {
-      await this.context.resume();
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
     }
     
     const binary = window.atob(base64Data);
@@ -94,23 +127,26 @@ export class AudioManager {
         float32Array[i] = int16Array[i] / 32768.0;
     }
 
-    const audioBuffer = this.context.createBuffer(1, float32Array.length, 16000);
+    const audioBuffer = ctx.createBuffer(1, float32Array.length, 16000);
     audioBuffer.getChannelData(0).set(float32Array);
     
-    const source = this.context.createBufferSource();
+    const source = ctx.createBufferSource();
     source.buffer = audioBuffer;
     
     // Add a GainNode to boost the natively quiet Gemini audio output
-    const gainNode = this.context.createGain();
+    const gainNode = ctx.createGain();
     gainNode.gain.value = 3.0; // 300% volume boost
     
     source.connect(gainNode);
-    gainNode.connect(this.context.destination);
+    gainNode.connect(ctx.destination);
     
-    if (this.nextPlayTime < this.context.currentTime) {
-      this.nextPlayTime = this.context.currentTime;
+    // Ensure chunks don't overlap if they arrive faster than they play back
+    if (this.nextPlayTime < ctx.currentTime) {
+      this.nextPlayTime = ctx.currentTime;
     }
     source.start(this.nextPlayTime);
+    
+    // Advance the play head by the exact length of this buffer
     this.nextPlayTime += audioBuffer.duration;
   }
 }

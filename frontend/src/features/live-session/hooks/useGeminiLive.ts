@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useLessonStore } from '../../../stores/useLessonStore';
+import { useUserStore } from '../../../stores/useUserStore';
+import { LESSONS } from '../../../data/curriculum';
 
 interface GeminiTokenResponse {
   token: string;
@@ -17,7 +19,7 @@ export function useGeminiLive() {
   
   const wsRef = useRef<WebSocket | null>(null);
   
-  const incrementXP = useLessonStore((state) => state.incrementXP);
+  const incrementXP = useUserStore((state) => state.incrementXP);
   const resetCombo = useLessonStore((state) => state.resetCombo);
   const setFeedback = useLessonStore((state) => state.setFeedback);
   
@@ -37,6 +39,11 @@ export function useGeminiLive() {
 
       ws.onopen = () => {
         console.log("WebSocket connected. Sending setup message.");
+        
+        const state = useLessonStore.getState();
+        const targetWords = state.lessonPath;
+        const firstWord = targetWords[0] || 'hello';
+        
         const setupMessage = {
           setup: {
             model: `projects/${data.project_id}/locations/${API_LOCATION}/publishers/google/models/${MODEL_NAME}`,
@@ -52,7 +59,7 @@ export function useGeminiLive() {
             },
             systemInstruction: {
               parts: [{
-                text: "You are SignSensei, an expert American Sign Language (ASL) tutor. You are cheerful, patient, and highly encouraging. Your goal is to help the user practice ASL. You can see their video stream and hear their audio. Provide feedback and use the tools available to update the UI."
+                text: `You are SignSensei, an expert American Sign Language (ASL) tutor. You are cheerful, patient, and highly encouraging. Your goal is to teach the user a sequence of words one at a time. The system starts you on the word '${firstWord}'. You must physically see the user sign the current word correctly. When they get it right, YOU MUST call mark_sign_correct. If they make a distinct error, call mark_sign_incorrect and verbally explain their mistake. If they are struggling and need to see a video of the sign, call show_sign_reference. Call finish_lesson ONLY when the system tells you the lesson is complete. The system will handle all UI tracking and tell you what the next word is after every correct sign. The full sequence today is: ${targetWords.join(', ')}.`
               }]
             },
             tools: [
@@ -60,31 +67,15 @@ export function useGeminiLive() {
                 functionDeclarations: [
                   {
                     name: "show_sign_reference",
-                    description: "Shows a video of a real human performing a specific ASL sign to help the user learn.",
-                    parameters: {
-                      type: "OBJECT",
-                      properties: {
-                        sign_name: {
-                          type: "STRING",
-                          description: "The name of the sign to show."
-                        }
-                      },
-                      required: ["sign_name"]
-                    }
+                    description: "Shows a video of a real human performing the CURRENT active ASL sign to help the user learn. Call this if they are struggling.",
                   },
                   {
-                    name: "trigger_rive_emotion",
-                    description: "Triggers the 2D mascot to show a specific emotional reaction.",
-                    parameters: {
-                      type: "OBJECT",
-                      properties: {
-                        state: {
-                          type: "STRING",
-                          enum: ["idle", "success", "error", "listening"]
-                        }
-                      },
-                      required: ["state"]
-                    }
+                    name: "mark_sign_correct",
+                    description: "Call this immediately when the user successfully signs the current word. The system will automatically advance the UI and tell you the next word.",
+                  },
+                  {
+                    name: "mark_sign_incorrect",
+                    description: "Call this when the user makes a clear mistake trying to sign the current word.",
                   },
                   {
                     name: "finish_lesson",
@@ -96,6 +87,19 @@ export function useGeminiLive() {
           }
         };
         ws.send(JSON.stringify(setupMessage));
+        
+        // Tell Gemini the first word immediately upon connection
+        const firstWordInit = useLessonStore.getState().lessonPath[0] || 'hello';
+        ws.send(JSON.stringify({
+            clientContent: {
+                turns: [{
+                    role: "user",
+                    parts: [{ text: `System Notification: The session has started. The first word for the user to learn is '${firstWordInit}'.` }]
+                }],
+                turnComplete: true
+            }
+        }));
+        
         setIsConnected(true);
         setIsConnecting(false);
       };
@@ -134,35 +138,73 @@ export function useGeminiLive() {
             const responses: any[] = [];
 
             for (const call of calls) {
-              if (call.name === 'trigger_rive_emotion') {
-                const args = call.args as any;
-                useLessonStore.getState().setMascotEmotion(args.state);
+              if (call.name === 'mark_sign_correct') {
+                const store = useLessonStore.getState();
+                const userStore = useUserStore.getState();
                 
-                // Keep the XP/Feedback logic tied to the emotion for now
-                if (args.state === 'success') {
-                   useLessonStore.getState().incrementXP(10);
-                   useLessonStore.getState().setFeedback("Excellent signing!", "success");
-                } else if (args.state === 'error') {
-                   useLessonStore.getState().resetCombo();
-                   useLessonStore.getState().setFeedback("Not quite right, let's try again.", "error");
-                } else if (args.state === 'idle') {
-                   useLessonStore.getState().setFeedback("", "idle");
+                store.setMascotEmotion('success');
+                store.setFeedback("Excellent signing!", "success");
+                userStore.incrementXP(10);
+                store.advanceStep();
+                
+                // Fetch newly updated state
+                const newState = useLessonStore.getState();
+                let resultMessage = "";
+                
+                if (newState.isLessonComplete) {
+                    resultMessage = "System: Lesson complete! You must now call finish_lesson.";
+                } else {
+                    const nextWord = newState.lessonPath[newState.currentStepIndex];
+                    resultMessage = `System: UI advanced, user rewarded. The next word to teach is '${nextWord}'. Tell the user what the next word is and start evaluating them for it.`;
                 }
-                
+
                 responses.push({
                    id: call.id,
-                   response: { result: "ok" }
+                   response: { result: resultMessage }
                 });
+                
+              } else if (call.name === 'mark_sign_incorrect') {
+                const store = useLessonStore.getState();
+                const userStore = useUserStore.getState();
+                
+                store.setMascotEmotion('error');
+                store.resetCombo();
+                store.setFeedback("Not quite right, let's try again.", "error");
+                
+                const currentWord = store.lessonPath[store.currentStepIndex];
+                if (currentWord) {
+                   userStore.recordWeakWord(currentWord);
+                }
+
+                responses.push({
+                   id: call.id,
+                   response: { result: "System: UI updated to show error state. Provide verbal feedback to the user." }
+                });
+                
               } else if (call.name === 'show_sign_reference') {
-                const args = call.args as any;
-                useLessonStore.getState().setReferenceSign(args.sign_name);
+                const state = useLessonStore.getState();
+                const signName = state.lessonPath[state.currentStepIndex];
+                
+                state.setAiPaused(true);
+                state.setReferenceSign(signName);
                 
                 responses.push({
                    id: call.id,
-                   response: { result: "ok" }
+                   response: { result: "System: User is now watching the reference video. AI Evaluation is paused." }
                 });
+                
               } else if (call.name === 'finish_lesson') {
-                useLessonStore.getState().setLessonComplete(true);
+                const lessonState = useLessonStore.getState();
+                lessonState.setLessonComplete(true);
+                
+                // Unlock the next lesson in the Saga Map
+                if (lessonState.activeLessonId) {
+                   const currentIndex = LESSONS.findIndex(l => l.id === lessonState.activeLessonId);
+                   if (currentIndex >= 0 && currentIndex < LESSONS.length - 1) {
+                       const nextLessonId = LESSONS[currentIndex + 1].id;
+                       useUserStore.getState().unlockLesson(nextLessonId);
+                   }
+                }
                 
                 responses.push({
                    id: call.id,

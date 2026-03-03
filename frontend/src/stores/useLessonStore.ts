@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 
 interface LessonState {
-  xp: number;
   combo: number;
   currentSign: string;
   feedback: string | null;
@@ -11,20 +10,27 @@ interface LessonState {
   referenceSign: string | null;
   mascotEmotion: 'idle' | 'success' | 'error' | 'listening';
   isLessonComplete: boolean;
+
+  // Path Tracking Architecture
+  activeLessonId: string | null;
+  lessonPath: string[];
+  currentStepIndex: number;
+  isAiPaused: boolean;
   
   // Actions
-  incrementXP: (amount: number) => void;
+  initializeLesson: (lessonId: string, path: string[]) => void;
+  setAiPaused: (paused: boolean) => void;
   resetCombo: () => void;
   setFeedback: (message: string, status: LessonState['status']) => void;
   setCurrentSign: (sign: string) => void;
   setReferenceSign: (sign: string | null) => void;
   setMascotEmotion: (emotion: LessonState['mascotEmotion']) => void;
   setLessonComplete: (isComplete: boolean) => void;
+  advanceStep: () => void;
   resetLesson: () => void;
 }
 
 export const useLessonStore = create<LessonState>((set) => ({
-  xp: 0,
   combo: 0,
   currentSign: '',
   feedback: null,
@@ -32,13 +38,24 @@ export const useLessonStore = create<LessonState>((set) => ({
   referenceSign: null,
   mascotEmotion: 'idle',
   isLessonComplete: false,
+  
+  activeLessonId: null,
+  lessonPath: [],
+  currentStepIndex: 0,
+  isAiPaused: false,
 
-  incrementXP: (amount) => set((state) => ({ 
-    xp: state.xp + amount,
-    combo: state.combo + 1,
-    status: 'success',
-    mascotEmotion: 'success'
-  })),
+  initializeLesson: (lessonId, path) => set({
+      activeLessonId: lessonId,
+      lessonPath: path,
+      currentStepIndex: 0,
+      isAiPaused: false,
+      isLessonComplete: false,
+      status: 'idle',
+      feedback: null,
+      mascotEmotion: 'idle'
+  }),
+
+  setAiPaused: (paused) => set({ isAiPaused: paused }),
 
   resetCombo: () => set({ combo: 0, status: 'error', mascotEmotion: 'error' }),
 
@@ -52,14 +69,29 @@ export const useLessonStore = create<LessonState>((set) => ({
 
   setLessonComplete: (isComplete) => set({ isLessonComplete: isComplete }),
 
+  advanceStep: () => set((state) => {
+    if (state.currentStepIndex < state.lessonPath.length - 1) {
+      return { 
+          currentStepIndex: state.currentStepIndex + 1,
+          status: 'idle',
+          feedback: null,
+          mascotEmotion: 'idle'
+      };
+    } else {
+        return { isLessonComplete: true };
+    }
+  }),
+
   resetLesson: () => set({ 
-    xp: 0, 
     combo: 0, 
     currentSign: '', 
     feedback: null, 
     status: 'idle',
     referenceSign: null,
     mascotEmotion: 'idle',
-    isLessonComplete: false
+    isLessonComplete: false,
+    currentStepIndex: 0,
+    activeLessonId: null,
+    isAiPaused: false
   }),
 }));
