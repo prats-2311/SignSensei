@@ -214,9 +214,23 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
 
             for (const call of calls) {
               if (call.name === 'mark_sign_correct') {
-                logger.info("✅ [Gemini Engine] mark_sign_correct triggered! Dispatching UI State Update.");
-                
                 const store = useLessonStore.getState();
+                
+                // --- FRONTEND GATEKEEPER ---
+                // Physically prevents the AI from grading if the Phase 2 timer never started.
+                if (!store.isPracticeModeActive) {
+                    logger.warn("🚫 [System Lockout] Gemini attempted to call mark_sign_correct before trigger_action_window was called! Ignoring hallucination.");
+                    responses.push({
+                        id: call.id,
+                        name: call.name,
+                        response: { 
+                            result: "SYSTEM ERROR: Tool execution blocked. You attempted to grade the user before calling trigger_action_window. You MUST wait for the user to verbally say 'Ready', and then YOU MUST call trigger_action_window to start the timer before you can evaluate them." 
+                        }
+                    });
+                    continue; 
+                }
+
+                logger.info("✅ [Gemini Engine] mark_sign_correct triggered! Dispatching UI State Update.");
                 const userStore = useUserStore.getState();
                 
                 store.setMascotEmotion('success');
@@ -256,9 +270,11 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                     // We skip the Context Rotation block because there is no `nextWord` to rotate to!
                 } else {
                     const nextWord = newState.lessonPath[newState.currentStepIndex];
+                    const previousWord = newState.lessonPath[newState.currentStepIndex - 1];
+                    
                     resultMessage = `
 [SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
-The user correctly signed the previous word. 
+The user correctly signed the word '${previousWord}'. 
 The curriculum has advanced.
 
 *** YOU MUST ABSOLUTELY FORGET ALL PREVIOUS CONVERSATIONAL TURNS. ***
@@ -269,7 +285,7 @@ You are now in Phase 1 (Standby).
 I am at the new word '${nextWord}'. 
 
 Your Immediate Objective:
-1. Enthusiastically congratulate the user on the previous word.
+1. Enthusiastically congratulate the user on successfully signing '${previousWord}'.
 2. Explicitly introduce the new word ('${nextWord}') and give a brief tip on how to perform it.
 3. Wait in standby mode. 
 
@@ -287,9 +303,24 @@ Your Immediate Objective:
                 }
                 
               } else if (call.name === 'mark_sign_incorrect') {
+                const store = useLessonStore.getState();
+                
+                // --- FRONTEND GATEKEEPER ---
+                // Physically prevents the AI from grading if the Phase 2 timer never started.
+                if (!store.isPracticeModeActive) {
+                    logger.warn("🚫 [System Lockout] Gemini attempted to call mark_sign_incorrect before trigger_action_window was called! Ignoring hallucination.");
+                    responses.push({
+                        id: call.id,
+                        name: call.name,
+                        response: { 
+                            result: "SYSTEM ERROR: Tool execution blocked. You attempted to grade the user before calling trigger_action_window. You MUST wait for the user to verbally say 'Ready', and then YOU MUST call trigger_action_window to start the timer before you can evaluate them." 
+                        }
+                    });
+                    continue; 
+                }
+
                 logger.warn("❌ [Gemini Engine] mark_sign_incorrect triggered!");
                 
-                const store = useLessonStore.getState();
                 const userStore = useUserStore.getState();
                 
                 store.setMascotEmotion('error');
@@ -315,7 +346,26 @@ Your Immediate Objective:
                 responses.push({
                    id: call.id,
                    name: call.name,
-                   response: { result: `System: Incorrect sign handled. The user failed the sign for the target word '${currentWord || 'unknown'}'. Your objective: Verbally explain EXACTLY why they failed the target word '${currentWord || 'unknown'}'. Provide a brief tip on how to correct their hand shape or movement. Then, explicitly tell them they can say "Show me" to watch the reference video, or "I am ready" to try again. Enter standby mode (Phase 1) and DO NOT evaluate until they explicitly state they are ready again.` }
+                   response: { result: `
+[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
+The user failed the sign for the current target word: '${currentWord || 'unknown'}'.
+
+Your Immediate Objective:
+1. Verbally explain exactly what their hands did wrong when attempting the word '${currentWord || 'unknown'}'.
+2. Provide a constructive tip on how to fix their hand shape or movement for '${currentWord || 'unknown'}'.
+3. Tell them they can say "Show me" to watch the reference video, or "Ready" to try '${currentWord || 'unknown'}' again.
+4. Enter Phase 1 (Standby) and wait.
+
+*** YOU MUST ABSOLUTELY FORGET ALL PREVIOUS CONVERSATIONAL TURNS. ***
+*** THE NEW TARGET WORD IS: '${currentWord || 'unknown'}' ***
+*** THE NEW TARGET WORD IS: '${currentWord || 'unknown'}' ***
+
+# CRITICAL PHASE 1 RULES:
+* DO NOT advance the curriculum. 
+* DO NOT call trigger_action_window.
+* DO NOT evaluate my resting hands.
+* You must wait for the human to verbally say "Ready" before calling the timer again.
+` }
                 });
                 
               } else if (call.name === 'show_sign_reference') {
@@ -326,12 +376,24 @@ Your Immediate Objective:
                 state.setAiPaused(true);
                 state.setReferenceSign(signName);
                 
-                // Embed the instruction to wait directly into the tool completion response 
-                // so Gemini doesn't treat a separate system notification as a new conversational turn
+                // Universal State Re-Injection
+                // We must explicitly anchor the target word so the AI doesn't hallucinate 
+                // what video it just opened based on older transcript memories.
                 responses.push({
                    id: call.id,
                    name: call.name,
-                   response: { result: "System: Video modal opened successfully. The user is now watching the reference video. Your new objective: Wait in standby mode and listen. Only proceed and call trigger_action_window when the user verbally states they are ready to try." }
+                   response: { 
+                       result: `
+[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
+The reference video for the target word '${signName}' was opened successfully. 
+The user is now watching the video for '${signName}'.
+
+Your Immediate Objective:
+1. Verbally state: "I've pulled up the video for '${signName}'."
+2. Wait in standby mode and listen.
+3. Only proceed and call trigger_action_window when the user verbally states they are ready to try '${signName}'.
+` 
+                   }
                 });
                 
               } else if (call.name === 'trigger_action_window') {
@@ -345,10 +407,27 @@ Your Immediate Objective:
                 // Dispatch a custom event that LiveSession.tsx can listen for
                 window.dispatchEvent(new CustomEvent('start-practice-mode'));
                 
+                const currentWord = state.lessonPath[state.currentStepIndex];
+                
+                // Universal State Re-Injection
+                // Explicitly bind the target word so the LLM doesn't grade a multi-word sequence
+                // against the wrong target if the user fumbles.
                 responses.push({
                    id: call.id,
                    name: call.name,
-                   response: { result: "System: Countdown timer started. Wait for the user to finish signing and give the completion signal before evaluating." }
+                   response: { 
+                       result: `
+[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
+Phase 2 (Recording) has officially begun for the target word '${currentWord}'.
+The timer is active.
+
+Your Immediate Objective:
+1. Observe the user's hand movements over the video stream.
+2. Evaluate their performance ONLY against the exact target word '${currentWord}'.
+3. Wait for the user to give the completion signal (e.g., saying "Done" or dropping their hands).
+4. Once completed, you MUST call either mark_sign_correct or mark_sign_incorrect based on their performance of '${currentWord}'.
+`
+                   }
                 });
                 
               } else if (call.name === 'finish_lesson') {
