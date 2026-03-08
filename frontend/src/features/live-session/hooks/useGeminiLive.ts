@@ -55,22 +55,33 @@ export function useGeminiLive() {
             },
             systemInstruction: {
               parts: [{
-                text: `You are SignSensei, an expert American Sign Language (ASL) tutor. You are cheerful, patient, and highly encouraging. Your goal is to teach the user a sequence of words one at a time. THE CURRENT ACTIVE TARGET WORD IS '${targetWord}'.
-                
-CRITICAL EVALUATION RULES (Practice Mode):
-You must evaluate the user's signing in three strict phases:
-Phase 1 (Waiting): The user is getting ready. The system is operating at a low framerate to save bandwidth. Do not evaluate. Welcome them and ask if they are ready or if they want to see a video of the sign.
-Phase 2 (Watching): The user pushes the 'Ready' button. The system switches to high framerate recording. The user's hands are moving, performing the sign. Actively track their movement, but DO NOT fire any tool calls yet. You must wait for them to finish.
-Phase 3 (Completion & Evaluation): The user signals they are finished in ONE of two ways:
-  A) Audio Signal: The user says "Done", "Check", "Finished", or similar.
-  B) Visual Signal: The user holds a clear "Thumbs Up" gesture with either hand.
-ONLY AFTER you detect one of these two completion signals, review the sign they performed immediately *before* the signal.
-If they did the current target word correctly, call mark_sign_correct.
-If they made a distinct error, call mark_sign_incorrect and verbally explain their mistake.
+                text: `# Role
+You are SignSensei, an expert, encouraging ASL tutor. Your goal is to guide the user through a progression of ASL vocabulary.
 
-If they are struggling and need to see a video of the sign, call show_sign_reference. The system will handle closing the video when the user is done watching.
-CRITICAL TOOL RULE: You must wait for the user to explicitly tell you they are ready to try signing. When they say they are ready, YOU MUST call trigger_action_window. Do not evaluate them until you have called this tool.
-Call finish_lesson ONLY when the system tells you the lesson is complete. The system will handle all UI tracking and tell you what the next word is after every correct sign. The full sequence today is: ${allWords.join(', ')}.`
+# Current State
+**Active Target Word:** '${targetWord}'
+**Current Lesson Path:** ${allWords.join(', ')}
+
+# The 3-Phase Evaluation Protocol
+You MUST strictly adhere to the following phase constraints to keep the UI synchronized:
+
+## PHASE 1: Pre-Teaching (Current State upon loading a word)
+*   **Your Goal:** Introduce the active target word and wait. The user is getting ready.
+*   **Allowed User Actions:** Asking questions, or asking to see a reference video.
+*   **Allowed Tools:** 'show_sign_reference' (ONLY if requested).
+*   **Disabled Tools:** 'mark_sign_correct', 'mark_sign_incorrect', 'mark_sentence_flow'. YOU CANNOT GRADE THE USER IN THIS PHASE.
+*   **Transition Trigger:** Wait for the user to explicitly say "Ready" or "Let's Go". Only upon this trigger, execute the 'trigger_action_window' tool to enter Phase 2.
+
+## PHASE 2: Recording (Active only after calling trigger_action_window)
+*   **Your Goal:** A 3-2-1 timer has started. The user is actively moving their hands. You must WATCH SILENTLY.
+*   **Allowed Tools:** NONE. Do not evaluate them while they are practicing.
+*   **Transition Trigger:** Wait for the user to provide a "Completion Signal" (verbally saying "Done" or holding a Thumbs Up).
+
+## PHASE 3: Grading (Active only after a Completion Signal)
+*   **Your Goal:** Evaluate the final sequence of frames *immediately preceding* the Completion Signal.
+*   **Allowed Tools:** 'mark_sign_correct' OR 'mark_sign_incorrect'.
+*   **Feedback Rule:** If incorrect, you must verbally explain the mistake.
+*   **Post-Action:** Calling either grading tool automatically returns you to Phase 1. Wait for instructions.`
               }]
             },
             tools: [
@@ -78,23 +89,23 @@ Call finish_lesson ONLY when the system tells you the lesson is complete. The sy
                 functionDeclarations: [
                   {
                     name: "trigger_action_window",
-                    description: "Call this tool ONLY when the user explicitly tells you they are ready to try signing. This will close any open videos and immediately start the 3-2-1 countdown timer.",
+                    description: "Transitions system from Phase 1 to Phase 2. Call this ONLY when the user explicitly says they are ready. CRITICAL: After calling this, you MUST WAIT SILENTLY for a Completion Signal ('Done' or 'Thumbs Up') before evaluating their sign.",
                   },
                   {
                     name: "show_sign_reference",
-                    description: "Shows a video of a real human performing the CURRENT active ASL sign to help the user learn. Call this if they ask for help or are struggling.",
+                    description: "AVAILABLE IN PHASE 1. Shows a video of a human performing the CURRENT target sign. Call this if the user asks for help or wants to see a video.",
                   },
                   {
                     name: "mark_sign_correct",
-                    description: "Call this immediately when the user successfully signs the current word. The system will automatically advance the UI and tell you the next word.",
+                    description: "ONLY AVAILABLE IN PHASE 3. Call this ONLY if you previously called 'trigger_action_window' AND the user just gave a Completion Signal. Evaluate their signing. If correct, call this tool. DO NOT use in Phase 1.",
                   },
                   {
                     name: "mark_sign_incorrect",
-                    description: "Call this when the user makes a clear mistake trying to sign the current word.",
+                    description: "ONLY AVAILABLE IN PHASE 3. Call this ONLY if you previously called 'trigger_action_window' AND the user just gave a Completion Signal. Evaluate their signing. If incorrect, call this tool and verbally explain their error. DO NOT use in Phase 1.",
                   },
                   {
                     name: "finish_lesson",
-                    description: "Triggers the end-of-lesson victory screen when you determine the user has completed their practice session.",
+                    description: "Triggers the end-of-lesson victory screen when the System tells you the lesson is complete. Do NOT call this on your own.",
                   },
                   {
                     name: "mark_sentence_flow",
@@ -245,49 +256,34 @@ Call finish_lesson ONLY when the system tells you the lesson is complete. The sy
                     // We skip the Context Rotation block because there is no `nextWord` to rotate to!
                 } else {
                     const nextWord = newState.lessonPath[newState.currentStepIndex];
-                    resultMessage = `System: Lesson advanced! The NEW target word is '${nextWord}'. Your objective: Completely disregard all prior video frames. Enter Standby Mode (Phase 1). DO NOT evaluate or call trigger_action_window until the human user speaks into the microphone.`;
+                    resultMessage = `
+[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
+The user correctly signed the previous word. 
+The curriculum has advanced.
+
+*** YOU MUST ABSOLUTELY FORGET ALL PREVIOUS CONVERSATIONAL TURNS. ***
+*** THE NEW TARGET WORD IS: '${nextWord}' ***
+*** THE NEW TARGET WORD IS: '${nextWord}' ***
+
+You are now in Phase 1 (Standby).
+I am at the new word '${nextWord}'. 
+
+Your Immediate Objective:
+1. Enthusiastically congratulate the user on the previous word.
+2. Explicitly introduce the new word ('${nextWord}') and give a brief tip on how to perform it.
+3. Wait in standby mode. 
+
+# CRITICAL PHASE 1 RULES:
+* DO NOT call trigger_action_window. 
+* DO NOT evaluate my hands. DO NOT call mark_sign_correct or mark_sign_incorrect.
+* You must wait for the human to verbally say "Ready" before calling the timer.
+`;
                     
                     responses.push({
                        id: call.id,
                        name: call.name,
                        response: { result: resultMessage }
                     });
-                    
-                    // CONTEXT ROTATION STRATEGY
-                    // The Gemini Live API does strictly NOT allow sending a `setup` payload mid-session.
-                    // Doing so kills the WebSocket. 
-                    // To prevent Context Overload ("Lost in the Middle" hallucination), we cannot wipe memory.
-                    // Instead, we forcefully rotate the context window out of relevance by injecting a massive, 
-                    // highly redundant `clientContent` block that explicitly commands it to forget the past 
-                    // and focus entirely on the new word.
-                    setTimeout(() => {
-                        ws.send(JSON.stringify({
-                            clientContent: {
-                                turns: [{
-                                    role: "user",
-                                    parts: [{ 
-                                        text: `
-[CRITICAL SYSTEM OVERRIDE - CONTEXT RESET]
-The previous word was scored correctly. The curriculum has advanced.
-YOU MUST ABSOLUTELY FORGET ALL PREVIOUS CONVERSATIONAL TURNS.
-
-*** THE NEW TARGET WORD IS: '${nextWord}' ***
-*** THE NEW TARGET WORD IS: '${nextWord}' ***
-*** THE NEW TARGET WORD IS: '${nextWord}' ***
-
-You are now in Phase 1 (Standby).
-I am at the new word '${nextWord}'. 
-Please explicitly introduce this new word and give me a brief tip on how to perform it.
-After you introduce it, you MUST wait in standby mode. 
-DO NOT call trigger_action_window. DO NOT evaluate. 
-You must wait for the human to verbally say "Ready" before calling the timer.
-` 
-                                    }]
-                                }],
-                                turnComplete: true
-                            }
-                        }));
-                    }, 500);
                 }
                 
               } else if (call.name === 'mark_sign_incorrect') {
