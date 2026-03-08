@@ -2,7 +2,8 @@ import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import google.auth
-from google.auth.transport.requests import Request
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from fastapi import Request
 import httpx
 from bs4 import BeautifulSoup
 
@@ -20,6 +21,18 @@ app.add_middleware(
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
+    
+@app.post("/api/diagnostics/log")
+async def receive_client_log(request: Request):
+    data = await request.json()
+    level = data.get("level", "info").upper()
+    msg = f"[CLIENT {level}] {data.get('timestamp')} - {data.get('message')}"
+    if "context" in data:
+        msg += f" | CONTEXT: {data['context']}"
+    
+    # 96m is Cyan to stand out in the terminal logs    
+    print(f"\033[96m{msg}\033[0m")
+    return {"status": "Logged"}
 
 # Simple in-memory cache to prevent spamming signasl.org during a session
 # In production, use Redis or Memcached
@@ -77,7 +90,7 @@ async def generate_gemini_token():
         )
         
         # Refresh the credentials to get a fresh access token
-        credentials.refresh(Request())
+        credentials.refresh(GoogleAuthRequest())
         
         return {
             "token": credentials.token,
