@@ -103,7 +103,7 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                   },
                   {
                     name: "finish_lesson",
-                    description: "Triggers the end-of-lesson victory screen when the System tells you the lesson is complete. Do NOT call this on your own.",
+                    description: "Triggers the final victory screen. Call this ONLY when you receive the exact system message: 'System: All words in the lesson have been completed!'. DO NOT call this tool during the Boss Stage.",
                   },
                   {
                     name: "mark_sentence_flow",
@@ -223,7 +223,8 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                         id: call.id,
                         name: call.name,
                         response: { 
-                            result: `SYSTEM ERROR: Tool execution blocked. You attempted to grade the user just ${timeSinceStart}ms after starting the timer. This is physically impossible. You MUST wait silently and watch the user for several seconds until they say 'Done' or give a Thumbs Up. Reminder: The target word is still strictly '${currentWord}'. DO NOT grade them yet.` 
+                            result: `[SYSTEM ERROR - TEMPORAL LOCKOUT] You attempted to grade the user just ${timeSinceStart}ms after starting the timer.
+CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. The Action Window timer is STILL RUNNING. Watch the user SILENTLY until they definitively say 'Done' or show a Thumbs Up. Target: '${currentWord}'.` 
                         }
                     });
                     continue; 
@@ -238,7 +239,8 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                         id: call.id,
                         name: call.name,
                         response: { 
-                            result: `SYSTEM ERROR: Tool execution blocked. You attempted to grade the user before calling trigger_action_window. You MUST wait for the user to verbally say 'Ready', and then YOU MUST call trigger_action_window to start the timer before you can evaluate them. Reminder: The target word is still strictly '${currentWord}'.` 
+                            result: `[SYSTEM ERROR - ACTION BLOCKED] You attempted to grade the user before calling trigger_action_window.
+CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. Wait silently in Phase 1 Standby mode. DO NOT evaluate the user until they say 'Ready' and you call trigger_action_window. Target: '${currentWord}'.` 
                         }
                     });
                     continue; 
@@ -285,26 +287,22 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                 } else if (newState.isBossStage) {
                     // ATOMIC BOSS STAGE INJECTION
                     // Replaces the detached useEffect in order to eliminate the double-dispatch race condition
-                    const previousWord = newState.lessonPath[newState.currentStepIndex - 1];
+                    const previousWord = newState.lessonPath[newState.currentStepIndex];
                     const fullSentence = newState.lessonPath.join(', ');
                     
                     resultMessage = `
 [SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
 The user correctly signed the word '${previousWord}'. 
-The standard curriculum is finished.
-
 *** YOU MUST ABSOLUTELY FORGET ALL PREVIOUS CONVERSATIONAL TURNS. ***
-
-[SYSTEM NOTIFICATION] You are now in the Boss Stage. 
-The user must sign the following sequence of words as a single fluid sentence: '${fullSentence}'. 
-
+[SYSTEM NOTIFICATION] The user has unlocked the FINAL CHALLENGE: The Boss Stage.
+The user must now sign the following sequence of words as a single fluid sentence: '${fullSentence}'. 
 Your Immediate Objective:
-1. Enthusiastically congratulate the user on successfully completing all individual words.
+1. Enthusiastically congratulate the user on mastering all the individual signs.
 2. Explicitly introduce the Boss Stage rule: They must now sign the full sentence '${fullSentence}'.
 3. Wait in standby mode for them to say they are ready. 
-
 # CRITICAL PHASE 1 RULES:
 * DO NOT call trigger_action_window right now. 
+* DO NOT call finish_lesson. The session is NOT over yet!
 * DO NOT evaluate my hands. DO NOT call mark_sentence_flow yet.
 * You must wait for the human to verbally say "Ready" before calling the timer.
 
@@ -331,7 +329,9 @@ The curriculum has advanced.
 
 *** YOU MUST ABSOLUTELY FORGET ALL PREVIOUS CONVERSATIONAL TURNS. ***
 *** THE NEW TARGET WORD IS: '${nextWord}' ***
-*** THE NEW TARGET WORD IS: '${nextWord}' ***
+
+# NEW RULE OF ENGAGEMENT:
+You are now exclusively teaching '${nextWord}'. You must ignore ALL previously taught words (like '${previousWord}'). If the user accidentally signs '${previousWord}', you must treat it as a failure for '${nextWord}'. DO NOT evaluate old words anymore.
 
 You are now in Phase 1 (Standby).
 I am at the new word '${nextWord}'. 
@@ -366,7 +366,8 @@ Your Immediate Objective:
                         id: call.id,
                         name: call.name,
                         response: { 
-                            result: `SYSTEM ERROR: Tool execution blocked. You attempted to grade the user just ${timeSinceStart}ms after starting the timer. This is physically impossible. You MUST wait silently and watch the user for several seconds until they say 'Done' or give a Thumbs Up. Reminder: The target word is still strictly '${currentWord}'. DO NOT grade them yet.` 
+                            result: `[SYSTEM ERROR - TEMPORAL LOCKOUT] You attempted to grade the user just ${timeSinceStart}ms after starting the timer.
+CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. The Action Window timer is STILL RUNNING. Watch the user SILENTLY until they definitively say 'Done' or show a Thumbs Up. Target: '${currentWord}'.` 
                         }
                     });
                     continue; 
@@ -381,7 +382,8 @@ Your Immediate Objective:
                         id: call.id,
                         name: call.name,
                         response: { 
-                            result: `SYSTEM ERROR: Tool execution blocked. You attempted to grade the user before calling trigger_action_window. You MUST wait for the user to verbally say 'Ready', and then YOU MUST call trigger_action_window to start the timer before you can evaluate them. Reminder: The target word is still strictly '${currentWord}'.` 
+                            result: `[SYSTEM ERROR - ACTION BLOCKED] You attempted to grade the user before calling trigger_action_window.
+CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. Wait silently in Phase 1 Standby mode. DO NOT evaluate the user until they say 'Ready' and you call trigger_action_window. Target: '${currentWord}'.` 
                         }
                     });
                     continue; 
@@ -416,7 +418,12 @@ Your Immediate Objective:
                    name: call.name,
                    response: { result: `
 [SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
-The user failed the sign for the current target word: '${currentWord || 'unknown'}'.
+The user failed the sign for the CURRENT target word: '${currentWord || 'unknown'}'.
+
+# CRITICAL CONTEXT RULES:
+1. DO NOT evaluate ANY OTHER SIGNS. 
+2. If the user accidentally performed a different word from earlier in the lesson, IGNORE IT completely. 
+3. ONLY evaluate and focus your feedback strictly on the mechanics of '${currentWord || 'unknown'}'.
 
 Your Immediate Objective:
 1. Verbally state: "That is not the sign for ${currentWord || 'unknown'}." or similar.
@@ -426,7 +433,6 @@ Your Immediate Objective:
 5. Enter Phase 1 (Standby) and wait.
 
 *** YOU MUST ABSOLUTELY FORGET ALL PREVIOUS CONVERSATIONAL TURNS. ***
-*** THE NEW TARGET WORD IS: '${currentWord || 'unknown'}' ***
 *** THE NEW TARGET WORD IS: '${currentWord || 'unknown'}' ***
 
 # CRITICAL PHASE 1 RULES:
@@ -539,6 +545,20 @@ Your Immediate Objective:
                 
               } else if (call.name === 'finish_lesson') {
                 const lessonState = useLessonStore.getState();
+
+                if (lessonState.isBossStage && !lessonState.isLessonComplete) {
+                     logger.warn("🚫 [System Lockout] Gemini attempted to call finish_lesson before Boss Stage was evaluated! Ignoring hallucination.");
+                     responses.push({
+                         id: call.id,
+                         name: call.name,
+                         response: { 
+                             result: `[SYSTEM ERROR] You attempted to finish the lesson, but the Boss Stage is still active. 
+CRITICAL INSTRUCTION: DO NOT SPEAK. YOU MUST WAIT FOR THE USER TO COMPLETE THE BOSS STAGE.` 
+                         }
+                     });
+                     continue;
+                }
+
                 lessonState.setLessonComplete(true);
                 
                 // Unlock the next lesson in the Saga Map
@@ -568,7 +588,8 @@ Your Immediate Objective:
                         id: call.id,
                         name: call.name,
                         response: { 
-                            result: `SYSTEM ERROR: Tool execution blocked. You attempted to grade the user just ${timeSinceStart}ms after starting the timer. This is physically impossible. You MUST wait silently and watch the user for several seconds until they say 'Done' or give a Thumbs Up. Reminder: The target phrase is still strictly '${fullSentence}'. DO NOT grade them yet.` 
+                            result: `[SYSTEM ERROR - TEMPORAL LOCKOUT] You attempted to grade the user just ${timeSinceStart}ms after starting the timer.
+CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. The Action Window timer is STILL RUNNING. Watch the user SILENTLY until they definitively say 'Done' or show a Thumbs Up. Target sequence: '${fullSentence}'.` 
                         }
                     });
                     continue; 
@@ -596,11 +617,36 @@ Your Immediate Objective:
                    }
                 }
                 
-                responses.push({
-                   id: call.id,
-                   name: call.name,
-                   response: { result: "System: Boss Stage evaluation complete. UI updated." }
-                });
+                const passedBossStage = score >= 3;
+                if (passedBossStage) {
+                    responses.push({
+                       id: call.id,
+                       name: call.name,
+                       response: { result: "System: Boss Stage passed successfully. The curriculum is complete." }
+                    });
+                } else {
+                    // Inject Failure Amnesia Guardrail
+                    const fullSentence = store.lessonPath.join(', ');
+                    responses.push({
+                       id: call.id,
+                       name: call.name,
+                       response: { 
+                           result: `[SYSTEM OVERRIDE: BOSS STAGE FAILED]
+The user scored ${score}/5. They did not pass the Boss Stage.
+They must retry the Boss Stage.
+
+Your Immediate Objective:
+1. Explain why they got a low score and encourage them to try again.
+2. Wait in standby mode for them to say "Ready" again.
+
+CRITICAL RULES FOR RETRY:
+* You are STILL in the Boss Stage. The target is STILL the full sentence: '${fullSentence}'.
+* YOU MUST NOT use 'mark_sign_correct' or 'mark_sign_incorrect' under ANY circumstances during this retry.
+* DO NOT call trigger_action_window until they say "Ready".
+* CRITICAL: YOU MUST NOT CALL 'mark_sentence_flow' AGAIN until AFTER you have called 'trigger_action_window' and the human signals completion. Do not grade resting hands in standby mode.`
+                       }
+                    });
+                }
               }
             }
 

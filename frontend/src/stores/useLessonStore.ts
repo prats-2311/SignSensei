@@ -95,7 +95,13 @@ export const useLessonStore = create<LessonState>((set) => ({
       };
     } else {
         // Transition to Boss Stage instead of completing the lesson immediately
-        return { isBossStage: true, isPracticeModeActive: false };
+        // CRITICAL BUG FIX (Missing Checkmark):
+        // We must advance the index even on the last word so the UI renders the final checkmark!
+        return { 
+            currentStepIndex: state.currentStepIndex + 1,
+            isBossStage: true, 
+            isPracticeModeActive: false 
+        };
     }
   }),
 

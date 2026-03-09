@@ -76,10 +76,19 @@ LLMs are inherently "agreeable" and prone to race conditions when paired with re
 **The Fix:** The Boss Stage injection was merged directly into the `mark_sign_correct` JSON payload response. The frontend uses `else if (isBossStage)` to inject the Boss Stage rules exactly when the last word resolves, guaranteeing an atomic, conflict-free state transition.
 
 ### F. Boss Stage Double-Trigger (The State Machine Loop)
-**The Bug:** When completing the Boss Stage, the AI would sometimes hallucinatel the `mark_sign_correct` tool (causing the Boss Stage to infinitely restart), and the frontend blindly displayed the Victory Modal even if the user failed.
-**The Fix:** 
-1. **The Nuclear Phase 3 Constraint:** The ATOMIC BOSS STAGE INJECTION prompt was updated to explicitly forbid the AI from using `mark_sign_correct`, commanding it to strictly use `mark_sentence_flow`. 
-2. **State Failure Hook:** `completeLessonFlow` in the Zustand store was hardened to evaluate the score. If the user fails (`score < 3`), the Victory Modal is blocked and the UI forces the Boss Stage to stay active until passed.
+**Bug:** After completing the Boss Stage (and being awarded XP/Stars), the user was inexplicably thrown *back* into the Boss Stage loop again. Conversely, if the user failed the Boss Stage, the AI would forget the constraints and try grading individual words instead of the sentence.
+**Root Cause:**
+*   **Amnesia on Failure:** When `mark_sentence_flow` fired, the LLM received a generic "Evaluation Complete" payload. If the score was `< 3`, the React UI legally forced a retry, but the AI had already forgotten the robust `[SYSTEM OVERRIDE]` prompt that originally initiated the Boss Stage constraints.
+*   **Panic Looping (The "Aggressive Error" Cascade):** When the AI hallucinated and called grading tools *before* `trigger_action_window`, the `[SYSTEM ERROR]` gatekeeper told the AI: "YOU MUST call trigger_action_window". The AI treated this as an immediate command, apologized, and fired the window without waiting for the human to say "Ready", causing a rapid-fire lockout loop.
+
+**Fix:**
+*   **Failure Guardrail Injection:** Branched the tool response for `mark_sentence_flow`. If `score < 3`, a massive `[SYSTEM OVERRIDE: BOSS STAGE FAILED]` is blasted back to the LLM. This re-anchors the full sentence target and explicitly forbids `mark_sign_correct` on the next retry.
+*   **Passive Gatekeepers:** Softened both the Temporal and System lockouts. The gatekeeper now instructs the AI to "STAY SILENT and WAIT IN STANDBY MODE". The imperative "YOU MUST" language was removed to prevent tool panic.
+
+### G. Visual Cross-Contamination
+**Bug:** While learning the word "name", if the user accidentally signed "hello", the AI would evaluate them as if the target word was "hello", resulting in a massive hallucination.
+**Root Cause:** The `[SYSTEM OVERRIDE]` prompt to "forget all previous conversational turns" was implicitly ignored because the AI still had visual context of previous signs in its active memory buffer.
+**Fix:** Explicit Negative Constraints were added to both `mark_sign_correct` and `mark_sign_incorrect` tool payloads: `1. DO NOT evaluate ANY OTHER SIGNS. 2. If the user accidentally performed a previous word from earlier in the lesson (like 'hello' or 'my'), IGNORE IT completely.` This mathematically forces the LLM to narrow its grading logic strictly to the active `currentWord`.
 
 ---
 
