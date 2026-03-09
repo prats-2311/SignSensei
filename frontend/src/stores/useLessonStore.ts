@@ -99,13 +99,22 @@ export const useLessonStore = create<LessonState>((set) => ({
     }
   }),
 
-  completeLessonFlow: (score, feedback) => set({
-      isLessonComplete: true,
-      finalScore: score,
-      feedback: feedback,
-      isBossStage: false,
-      isPracticeModeActive: false,
-      mascotEmotion: 'success'
+  completeLessonFlow: (score, feedback) => set(() => {
+      const passedBossStage = score >= 3;
+      
+      return {
+          finalScore: score,
+          feedback: feedback,
+          isPracticeModeActive: false,
+          
+          // CRITICAL BUG FIX (Double-Trigger Loop):
+          // Only trigger the Victory Modal (isLessonComplete) if they actually passed the Boss Stage.
+          // If they failed, keep them in the Boss Stage loop so they have to try again.
+          isLessonComplete: passedBossStage,
+          isBossStage: !passedBossStage,
+          mascotEmotion: passedBossStage ? 'success' : 'error',
+          status: passedBossStage ? 'success' : 'error' // Ensure the status briefly flashes so the UI updates
+      };
   }),
 
   resetLesson: () => set({ 

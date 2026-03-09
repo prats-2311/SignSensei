@@ -75,6 +75,12 @@ LLMs are inherently "agreeable" and prone to race conditions when paired with re
 **The Bug:** Reaching the end of the lesson caused a race condition where the AI was told "Next word is X" and "You are in the Boss Stage" simultaneously, causing a catastrophic memory wipe. 
 **The Fix:** The Boss Stage injection was merged directly into the `mark_sign_correct` JSON payload response. The frontend uses `else if (isBossStage)` to inject the Boss Stage rules exactly when the last word resolves, guaranteeing an atomic, conflict-free state transition.
 
+### F. Boss Stage Double-Trigger (The State Machine Loop)
+**The Bug:** When completing the Boss Stage, the AI would sometimes hallucinatel the `mark_sign_correct` tool (causing the Boss Stage to infinitely restart), and the frontend blindly displayed the Victory Modal even if the user failed.
+**The Fix:** 
+1. **The Nuclear Phase 3 Constraint:** The ATOMIC BOSS STAGE INJECTION prompt was updated to explicitly forbid the AI from using `mark_sign_correct`, commanding it to strictly use `mark_sentence_flow`. 
+2. **State Failure Hook:** `completeLessonFlow` in the Zustand store was hardened to evaluate the score. If the user fails (`score < 3`), the Victory Modal is blocked and the UI forces the Boss Stage to stay active until passed.
+
 ---
 
 ## 5. Next Immediate Steps

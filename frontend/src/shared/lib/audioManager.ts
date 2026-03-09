@@ -20,6 +20,7 @@ export class AudioManager {
         }
       });
       
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       this.recordingContext = new AudioCtx({ sampleRate: 16000 }) as AudioContext;
       this.source = this.recordingContext.createMediaStreamSource(this.mediaStream);
@@ -90,6 +91,7 @@ export class AudioManager {
   }
 
   initializePlaybackContext() {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!this.playbackContext || this.playbackContext.state === 'closed') {
         this.playbackContext = new AudioCtx({ sampleRate: 16000 }) as AudioContext;

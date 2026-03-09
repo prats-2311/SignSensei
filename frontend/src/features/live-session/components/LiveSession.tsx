@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useGeminiLive } from '../hooks/useGeminiLive';
 import { AudioManager } from '../../../shared/lib/audioManager';
 import { VideoCapture } from '../../../shared/lib/videoCapture';
@@ -69,10 +69,10 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
      }
   }, [isActive, isPracticeModeActive, sendVideoData]);
 
-  const startPracticeMode = () => {
+  const startPracticeMode = useCallback(() => {
       setCountdown(null);
       setPracticeModeActive(true);
-  };
+  }, [setPracticeModeActive]);
   
   // Listen for the AI triggering the action window
   useEffect(() => {
@@ -84,7 +84,7 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
      return () => {
          window.removeEventListener('start-practice-mode', handleStartPracticeEvent);
      };
-  }, []);
+  }, [startPracticeMode]);
   
   const endPracticeMode = () => {
      // User manually signals they are done. Gemini's VAD handles the audio "Done" version.
@@ -92,7 +92,7 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
      setPracticeModeActive(false);
      
      // Send ONE explicit empty voice ping to ensure the WebSocket flushes the frame buffer to Gemini immediately
-     useGeminiLive().sendAudioData(""); 
+     sendAudioData(""); 
   }
 
   useEffect(() => {

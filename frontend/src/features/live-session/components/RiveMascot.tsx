@@ -27,8 +27,10 @@ export function RiveMascot() {
       // Normal/Idle state = 2
       // Bumpy/Success state = 0
       if (mascotEmotion === 'success') {
+          // eslint-disable-next-line react-hooks/immutability
           levelInput.value = 0; 
       } else {
+          // eslint-disable-next-line react-hooks/immutability
           levelInput.value = 2;
       }
       

@@ -21,10 +21,6 @@ export function useGeminiLive() {
   const wsRef = useRef<WebSocket | null>(null);
   const actionWindowStartTimeRef = useRef<number>(0);
   
-  const incrementXP = useUserStore((state) => state.incrementXP);
-  const resetCombo = useLessonStore((state) => state.resetCombo);
-  const setFeedback = useLessonStore((state) => state.setFeedback);
-  
   const connect = useCallback(async (onAudioData?: (base64Audio: string) => void) => {
     setIsConnecting(true);
     setError(null);
@@ -212,7 +208,7 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
             const calls = msg.toolCall.functionCalls;
             logger.info("📡 [Gemini WebSocket] Tool Call Payload Received", calls);
             
-            const responses: any[] = [];
+            const responses: { id: string; name: string; response: { result: string } }[] = [];
 
             for (const call of calls) {
               if (call.name === 'mark_sign_correct') {
@@ -311,6 +307,11 @@ Your Immediate Objective:
 * DO NOT call trigger_action_window right now. 
 * DO NOT evaluate my hands. DO NOT call mark_sentence_flow yet.
 * You must wait for the human to verbally say "Ready" before calling the timer.
+
+# CRITICAL PHASE 3 RULES (FOR WHEN THE USER IS DONE):
+* You are evaluating a FULL SENTENCE.
+* You MUST NOT use 'mark_sign_correct' or 'mark_sign_incorrect' under ANY circumstances during this Stage, even if the human signs perfectly.
+* You are ONLY allowed to use the 'mark_sentence_flow' tool to evaluate their performance on the entire sequence.
 `;
                     
                     responses.push({
@@ -628,12 +629,16 @@ Your Immediate Objective:
         setIsConnected(false);
       };
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setError(err.message);
+      if (err instanceof Error) {
+          setError(err.message);
+      } else {
+          setError("An unknown error occurred during connection.");
+      }
       setIsConnecting(false);
     }
-  }, [incrementXP, resetCombo, setFeedback]);
+  }, []);
 
   const disconnect = useCallback(() => {
     if (wsRef.current) {

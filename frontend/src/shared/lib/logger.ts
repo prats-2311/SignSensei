@@ -6,7 +6,7 @@ const originalFactory = log.methodFactory;
 log.methodFactory = function (methodName, logLevel, loggerName) {
   const rawMethod = originalFactory(methodName, logLevel, loggerName);
 
-  return function (message: any, ...args: any[]) {
+  return function (message: unknown, ...args: unknown[]) {
     const timestamp = new Date().toISOString();
     
     // Log to standard console

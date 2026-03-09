@@ -8,6 +8,7 @@ let audioCtx: AudioContext | null = null;
 // Helper to create the Audio Context
 const getAudioContext = () => {
     if (!audioCtx) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
     return audioCtx;
@@ -32,6 +33,35 @@ if (typeof window !== 'undefined') {
 
 export function AudioHapticController() {
   const { mascotEmotion } = useLessonStore();
+
+  // Helper function to synthesize retro 8-bit sounds natively
+  const playPureTone = (frequency: number, type: OscillatorType, duration: number) => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    
+    // Web Audio requires resumption after user gesture
+    if (ctx.state === 'suspended') {
+        ctx.resume();
+    }
+
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(frequency, ctx.currentTime);
+
+    // Simple ADSR amplitude envelope to prevent clicks
+    gainNode.gain.setValueAtTime(0, ctx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+    // Use setTargetAtTime instead of exponentialRamp to avoid negative value errors in older browsers
+    gainNode.gain.setTargetAtTime(0, ctx.currentTime + 0.05, duration / 3);
+
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    osc.start();
+    osc.stop(ctx.currentTime + duration);
+  };
 
   useEffect(() => {
     
@@ -68,35 +98,6 @@ export function AudioHapticController() {
       setTimeout(() => playPureTone(142, 'sawtooth', 0.25), 50); 
     }
   }, [mascotEmotion]);
-
-  // Helper function to synthesize retro 8-bit sounds natively
-  const playPureTone = (frequency: number, type: OscillatorType, duration: number) => {
-    const ctx = getAudioContext();
-    if (!ctx) return;
-    
-    // Web Audio requires resumption after user gesture
-    if (ctx.state === 'suspended') {
-        ctx.resume();
-    }
-
-    const osc = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-
-    osc.type = type;
-    osc.frequency.setValueAtTime(frequency, ctx.currentTime);
-
-    // Simple ADSR amplitude envelope to prevent clicks
-    gainNode.gain.setValueAtTime(0, ctx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
-    // Use setTargetAtTime instead of exponentialRamp to avoid negative value errors in older browsers
-    gainNode.gain.setTargetAtTime(0, ctx.currentTime + 0.05, duration / 3);
-
-    osc.connect(gainNode);
-    gainNode.connect(ctx.destination);
-
-    osc.start();
-    osc.stop(ctx.currentTime + duration);
-  };
 
   return null; // Purely functional, no DOM nodes required
 }
