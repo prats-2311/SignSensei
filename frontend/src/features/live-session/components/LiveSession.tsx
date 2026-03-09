@@ -70,19 +70,8 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
   }, [isActive, isPracticeModeActive, sendVideoData]);
 
   const startPracticeMode = () => {
-      let count = 3;
-      setCountdown(count);
-      
-      const timer = setInterval(() => {
-          count -= 1;
-          if (count > 0) {
-              setCountdown(count);
-          } else {
-              clearInterval(timer);
-              setCountdown(null);
-              setPracticeModeActive(true);
-          }
-      }, 1000);
+      setCountdown(null);
+      setPracticeModeActive(true);
   };
   
   // Listen for the AI triggering the action window
