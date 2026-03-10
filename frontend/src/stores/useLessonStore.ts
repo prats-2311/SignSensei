@@ -13,6 +13,7 @@ interface LessonState {
   isPracticeModeActive: boolean;
   isBossStage: boolean;
   finalScore: number | null;
+  hasUserSignaledDone: boolean;
 
   // Path Tracking Architecture
   activeLessonId: string | null;
@@ -24,6 +25,7 @@ interface LessonState {
   initializeLesson: (lessonId: string, path: string[]) => void;
   setAiPaused: (paused: boolean) => void;
   setPracticeModeActive: (active: boolean) => void;
+  setHasUserSignaledDone: (signaled: boolean) => void;
   resetCombo: () => void;
   resetStatusToIdle: () => void;
   setFeedback: (message: string, status: LessonState['status']) => void;
@@ -52,6 +54,7 @@ export const useLessonStore = create<LessonState>((set) => ({
   isPracticeModeActive: false,
   isBossStage: false,
   finalScore: null,
+  hasUserSignaledDone: false,
 
   initializeLesson: (lessonId, path) => set({
       activeLessonId: lessonId,
@@ -63,12 +66,15 @@ export const useLessonStore = create<LessonState>((set) => ({
       feedback: null,
       mascotEmotion: 'idle',
       isBossStage: false,
-      finalScore: null
+      finalScore: null,
+      hasUserSignaledDone: false
   }),
 
   setAiPaused: (paused) => set({ isAiPaused: paused }),
 
   setPracticeModeActive: (active: boolean) => set({ isPracticeModeActive: active }),
+
+  setHasUserSignaledDone: (signaled: boolean) => set({ hasUserSignaledDone: signaled }),
 
   resetCombo: () => set({ combo: 0, status: 'error', mascotEmotion: 'error' }),
   
@@ -89,7 +95,8 @@ export const useLessonStore = create<LessonState>((set) => ({
       return { 
           currentStepIndex: state.currentStepIndex + 1,
           feedback: null,
-          isPracticeModeActive: false
+          isPracticeModeActive: false,
+          hasUserSignaledDone: false
           // Intentionally omitting status and mascotEmotion reset here 
           // so the success animation has 2000ms to breathe.
       };
@@ -100,7 +107,8 @@ export const useLessonStore = create<LessonState>((set) => ({
         return { 
             currentStepIndex: state.currentStepIndex + 1,
             isBossStage: true, 
-            isPracticeModeActive: false 
+            isPracticeModeActive: false,
+            hasUserSignaledDone: false
         };
     }
   }),
@@ -136,6 +144,7 @@ export const useLessonStore = create<LessonState>((set) => ({
     isAiPaused: false,
     isPracticeModeActive: false,
     isBossStage: false,
-    finalScore: null
+    finalScore: null,
+    hasUserSignaledDone: false
   }),
 }));

@@ -70,7 +70,7 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
 *   **Transition Trigger:** Wait for the user to explicitly say "Ready" or "Let's Go". Only upon this trigger, execute the 'trigger_action_window' tool to enter Phase 2.
 
 ## PHASE 2: Recording (Active only after calling trigger_action_window)
-*   **Your Goal:** A 3-2-1 timer has started. The user is actively moving their hands. You must WATCH SILENTLY.
+*   **Your Goal:** A timer has started. The user is actively moving their hands. You must evaluate their movements.
 *   **Allowed Tools:** NONE. Do not evaluate them while they are practicing.
 *   **Transition Trigger:** Wait for the user to provide a "Completion Signal" (verbally saying "Done" or holding a Thumbs Up).
 
@@ -95,11 +95,11 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                   },
                   {
                     name: "mark_sign_correct",
-                    description: "ONLY AVAILABLE IN PHASE 3. Call this if the user correctly performed the target word. CRITICAL NEGATIVE CONSTRAINT: If the user did nothing, sat still, or did not attempt the sign at all, you MUST NOT call this tool. Do not mark resting hands as correct. DO NOT use in Phase 1.",
+                    description: "ONLY AVAILABLE IN PHASE 3. Call this if the user correctly performed the target word. Do not mark resting hands as correct. DO NOT use in Phase 1.",
                   },
                   {
                     name: "mark_sign_incorrect",
-                    description: "ONLY AVAILABLE IN PHASE 3. Call this if they failed the sign, OR if they did nothing/sat still. You must verbally explain their error (e.g., 'You didn't sign anything' or 'Your hand shape was wrong'). DO NOT use in Phase 1.",
+                    description: "ONLY AVAILABLE IN PHASE 3. Call this if they failed the sign. Wait watchfully for at least 4 seconds before deciding they failed. If they sit perfectly still for 4+ seconds, then call this tool. You must verbally explain their error. DO NOT use in Phase 1.",
                   },
                   {
                     name: "finish_lesson",
@@ -184,9 +184,17 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                logger.info(`💬 [Gemini Transcript]: ${msg.serverContent.outputTranscription.text}`);
             }
             
-            // Documented: User's Audio transcription returned here
+            // Documented: User's Audio transcription returned here (used for Event-Driven Lockout Drops)
             if (msg.serverContent.inputTranscription && msg.serverContent.inputTranscription.text) {
-               logger.info(`🗣️ [User Voice]: ${msg.serverContent.inputTranscription.text}`);
+               const rawTranscript = msg.serverContent.inputTranscription.text;
+               logger.info(`🗣️ [User Voice]: ${rawTranscript}`);
+               
+               const lowerTranscript = rawTranscript.toLowerCase();
+               if (lowerTranscript.includes("done") || lowerTranscript.includes("finished") || lowerTranscript.includes("ready")) {
+                   // Event-Driven trigger: Drops the lockout shields for Boss Stage grading
+                   useLessonStore.getState().setHasUserSignaledDone(true);
+                   logger.info("🔓 [Frontend Gatekeeper] User said 'Done/Ready'. Grading tools are now unlocked.");
+               }
             }
 
             // Documented: Actual audio chunk payload
@@ -214,9 +222,9 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
               if (call.name === 'mark_sign_correct') {
                 const store = useLessonStore.getState();
                 
-                // --- TEMPORAL GATEKEEPER ---
+                // --- TEMPORAL GATEKEEPER (HYBRID UX: FAST SUCCESS) ---
                 const timeSinceStart = Date.now() - actionWindowStartTimeRef.current;
-                if (timeSinceStart < 2000 && store.isPracticeModeActive) {
+                if (timeSinceStart < 1000 && store.isPracticeModeActive) { // Reduced to 1 second for snappy UX
                     logger.warn(`🚫 [Temporal Lockout] Gemini attempted to mark correct too quickly (${timeSinceStart}ms)! Ignoring hallucination.`);
                     const currentWord = store.lessonPath[store.currentStepIndex];
                     responses.push({
@@ -224,7 +232,7 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                         name: call.name,
                         response: { 
                             result: `[SYSTEM ERROR - TEMPORAL LOCKOUT] You attempted to grade the user just ${timeSinceStart}ms after starting the timer.
-CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. The Action Window timer is STILL RUNNING. Watch the user SILENTLY until they definitively say 'Done' or show a Thumbs Up. Target: '${currentWord}'.` 
+CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. Watch the user SILENTLY for at least 1 full second. Target: '${currentWord}'.` 
                         }
                     });
                     continue; 
@@ -357,17 +365,17 @@ Your Immediate Objective:
               } else if (call.name === 'mark_sign_incorrect') {
                 const store = useLessonStore.getState();
 
-                // --- TEMPORAL GATEKEEPER ---
+                // --- TEMPORAL GATEKEEPER (HYBRID UX: PATIENT FAILURE) ---
                 const timeSinceStart = Date.now() - actionWindowStartTimeRef.current;
-                if (timeSinceStart < 2000 && store.isPracticeModeActive) {
-                    logger.warn(`🚫 [Temporal Lockout] Gemini attempted to mark incorrect too quickly (${timeSinceStart}ms)! Ignoring hallucination.`);
+                if (timeSinceStart < 4000 && store.isPracticeModeActive) { // Increased to 4 seconds for a grace period
+                    logger.warn(`🚫 [Temporal Lockout - Grace Period] Gemini attempted to mark incorrect too quickly (${timeSinceStart}ms)! Forcing patience.`);
                     const currentWord = store.lessonPath[store.currentStepIndex];
                     responses.push({
                         id: call.id,
                         name: call.name,
                         response: { 
-                            result: `[SYSTEM ERROR - TEMPORAL LOCKOUT] You attempted to grade the user just ${timeSinceStart}ms after starting the timer.
-CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. The Action Window timer is STILL RUNNING. Watch the user SILENTLY until they definitively say 'Done' or show a Thumbs Up. Target: '${currentWord}'.` 
+                            result: `[SYSTEM ERROR - TEMPORAL LOCKOUT] You attempted to fail the user just ${timeSinceStart}ms after starting the timer. 
+CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. You must give them at least 4 seconds to figure it out. Watch silently and wait. Target: '${currentWord}'.` 
                         }
                     });
                     continue; 
@@ -578,18 +586,17 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. YOU MUST WAIT FOR THE USER TO COMPLETE THE B
               } else if (call.name === 'mark_sentence_flow') {
                 logger.info("🌟 [Gemini Engine] mark_sentence_flow triggered! Boss Stage Complete.");
 
-                // --- TEMPORAL GATEKEEPER ---
-                const timeSinceStart = Date.now() - actionWindowStartTimeRef.current;
+                // --- EVENT-DRIVEN GATEKEEPER (HYBRID UX: STRICT BOSS STAGE) ---
                 const store = useLessonStore.getState();
-                if (timeSinceStart < 2000 && store.isPracticeModeActive) {
-                    logger.warn(`🚫 [Temporal Lockout] Gemini attempted to mark sentence flow too quickly (${timeSinceStart}ms)! Ignoring hallucination.`);
+                if (!store.hasUserSignaledDone && store.isPracticeModeActive) {
+                    logger.warn(`🚫 [Event Lockout] Gemini attempted to grade Boss Stage before user said "Done"! Blocking.`);
                     const fullSentence = store.lessonPath.join(', ');
                     responses.push({
                         id: call.id,
                         name: call.name,
                         response: { 
-                            result: `[SYSTEM ERROR - TEMPORAL LOCKOUT] You attempted to grade the user just ${timeSinceStart}ms after starting the timer.
-CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. The Action Window timer is STILL RUNNING. Watch the user SILENTLY until they definitively say 'Done' or show a Thumbs Up. Target sequence: '${fullSentence}'.` 
+                            result: `[SYSTEM ERROR - EVENT LOCKOUT] You attempted to grade the sentence sequence before the user gave the completion signal.
+CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. You MUST WAIT SILENTLY until the human explicitly says "Done" or "Finished". Target sequence: '${fullSentence}'.` 
                         }
                     });
                     continue; 
