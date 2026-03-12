@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
-import { Coins, Flame, Trophy, Lock } from 'lucide-react';
+import { Coins, Flame, Trophy, Lock, Star } from 'lucide-react';
 import { useUserStore } from './stores/useUserStore';
 import { useLessonStore } from './stores/useLessonStore';
 import { ProgressBar } from './shared/ui/ProgressBar';
@@ -19,7 +19,7 @@ import type { LessonData } from './data/curriculum';
 function MapScreen() {
   const navigate = useNavigate();
   const { initializeLesson } = useLessonStore();
-  const { xp, unlockedLessonIds } = useUserStore();
+  const { xp, unlockedLessonIds, lessonScores } = useUserStore();
   const [selectedLesson, setSelectedLesson] = useState<LessonData | null>(null);
   const currentLevelProgress = xp % 100;
 
@@ -30,7 +30,15 @@ function MapScreen() {
 
   return (
     <>
-      <Card className="border-none shadow-none bg-transparent">
+      {/* Animated Gradient Background */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0f0c29] via-[#302b63] to-[#24243e]" />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDuration: '8s' }} />
+        <div className="absolute bottom-1/3 right-1/4 w-80 h-80 bg-blue-500/10 rounded-full blur-[100px] animate-pulse" style={{ animationDuration: '12s' }} />
+        <div className="absolute top-1/2 left-1/2 w-64 h-64 bg-indigo-500/8 rounded-full blur-[80px] animate-pulse" style={{ animationDuration: '10s' }} />
+      </div>
+
+      <Card className="border-none shadow-none bg-transparent relative z-10">
         <div className="p-4 space-y-3">
           <div className="flex justify-between items-center text-sm font-semibold text-muted-foreground">
             <span>Daily Goal</span>
@@ -45,22 +53,23 @@ function MapScreen() {
           const isSelected = selectedLesson?.id === lesson.id;
           const isUnlocked = unlockedLessonIds.includes(lesson.id);
           const isLocked = !isUnlocked;
+          const lessonStars = lessonScores[lesson.id] || 0;
           
           return (
             <div key={lesson.id} className="relative flex flex-col items-center mb-8">
               {/* Vertical Dashed Connection Line */}
               {index !== LESSONS.length - 1 && (
-                 <div className="absolute top-20 w-px h-16 border-l-2 border-dashed border-white/20 -z-10" />
+                 <div className={`absolute top-20 w-px h-16 border-l-2 border-dashed -z-10 ${isUnlocked ? 'border-white/30' : 'border-white/10'}`} />
               )}
               
               {/* Active / Inactive Node */}
               <div 
                   className={`w-28 h-28 rounded-full flex items-center justify-center border-4 shadow-2xl transition-all duration-300 relative z-10 
                     ${isLocked 
-                        ? 'bg-black/50 border-white/10 opacity-70 cursor-not-allowed' 
-                        : `${lesson.color} border-white/50 cursor-pointer hover:scale-105 hover:brightness-110 shadow-[0_0_30px_rgba(255,255,255,0.1)]`
+                        ? 'bg-white/5 border-white/10 opacity-60 cursor-not-allowed backdrop-blur-sm' 
+                        : `${lesson.color} border-white/50 cursor-pointer hover:scale-105 hover:brightness-110 shadow-[0_0_30px_rgba(255,255,255,0.15)]`
                     }
-                    ${isSelected ? 'ring-4 ring-white ring-offset-4 ring-offset-background' : ''}
+                    ${isSelected ? 'ring-4 ring-white ring-offset-4 ring-offset-background scale-110' : ''}
                   `}
                   onClick={() => {
                       if (!isLocked) {
@@ -69,24 +78,32 @@ function MapScreen() {
                   }}
               >
                   {isLocked ? (
-                      <Lock className="w-8 h-8 text-white/40" />
+                      <Lock className="w-8 h-8 text-white/30" />
                   ) : (
                       <span className="text-5xl transform translate-y-[-2px]">{lesson.icon}</span>
                   )}
                   
-                  {/* Mock Activity Dots */}
+                  {/* Star Indicators (replace old dots) */}
                   {!isLocked && (
-                     <div className="absolute -bottom-2 flex space-x-1">
-                        <div className="w-2 h-2 rounded-full bg-white border border-black/50" />
-                        <div className="w-2 h-2 rounded-full bg-white border border-black/50" />
-                        <div className="w-2 h-2 rounded-full bg-black/50 border border-black/50" />
+                     <div className="absolute -bottom-3 flex space-x-1">
+                        {[1, 2, 3].map((star) => (
+                           <Star
+                              key={star}
+                              className={`w-4 h-4 ${
+                                star <= lessonStars 
+                                  ? 'text-yellow-400 fill-yellow-400 drop-shadow-[0_0_4px_rgba(250,204,21,0.6)]' 
+                                  : 'text-white/20'
+                              }`}
+                              strokeWidth={2}
+                           />
+                        ))}
                      </div>
                   )}
               </div>
 
               {/* Popup Detail Card (Shows when selected) */}
               {isSelected && (
-                  <div className="absolute top-1/2 left-[120px] -translate-y-1/2 ml-4 w-64 bg-card border border-white/10 rounded-2xl p-5 shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 animate-in zoom-in-95 duration-200">
+                  <div className="absolute top-1/2 left-[120px] -translate-y-1/2 ml-4 w-64 bg-card/95 backdrop-blur-xl border border-white/15 rounded-2xl p-5 shadow-[0_10px_40px_rgba(0,0,0,0.5)] z-50 animate-in zoom-in-95 duration-200">
                      <h3 className="text-lg font-bold text-white mb-1">{lesson.title}</h3>
                      <p className="text-sm text-gray-400 mb-4">{lesson.description}</p>
                      
@@ -98,12 +115,12 @@ function MapScreen() {
                        ))}
                      </div>
                      
-                     <Button 
-                        className="w-full shadow-lg bg-white/20 hover:bg-white/30 text-white border-none py-2" 
+                     <button 
+                        className="w-full py-3 rounded-xl font-bold text-white text-sm uppercase tracking-wider bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 shadow-lg hover:shadow-pink-500/25 transition-all duration-300 active:scale-95" 
                         onClick={() => handleStartLesson(lesson)}
                      >
                         START
-                     </Button>
+                     </button>
                   </div>
               )}
             </div>
@@ -131,6 +148,7 @@ function MapScreen() {
     </>
   );
 }
+
 
 function LessonScreen() {
   const navigate = useNavigate();

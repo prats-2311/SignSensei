@@ -10,6 +10,7 @@ interface UserState {
   // Progression
   unlockedLessonIds: string[];
   weakWords: Record<string, number>;
+  lessonScores: Record<string, number>;
   
   // Actions
   incrementXP: (amount: number) => void;
@@ -17,6 +18,7 @@ interface UserState {
   addGems: (amount: number) => void;
   unlockLesson: (lessonId: string) => void;
   recordWeakWord: (word: string) => void;
+  setLessonScore: (lessonId: string, score: number) => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -27,6 +29,7 @@ export const useUserStore = create<UserState>()(
       gems: 50,
       unlockedLessonIds: ['the-basics'], // Start with the first module unlocked
       weakWords: {},
+      lessonScores: {},
       
       incrementXP: (amount) => set((state) => ({ xp: state.xp + amount })),
       incrementStreak: () => set((state) => ({ streak: state.streak + 1 })),
@@ -41,6 +44,13 @@ export const useUserStore = create<UserState>()(
         weakWords: {
           ...state.weakWords,
           [word]: (state.weakWords[word] || 0) + 1
+        }
+      })),
+
+      setLessonScore: (lessonId, score) => set((state) => ({
+        lessonScores: {
+          ...state.lessonScores,
+          [lessonId]: Math.max(state.lessonScores[lessonId] || 0, score)
         }
       })),
     }),

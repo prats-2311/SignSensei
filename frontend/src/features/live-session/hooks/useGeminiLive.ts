@@ -20,8 +20,11 @@ export function useGeminiLive() {
   
   const wsRef = useRef<WebSocket | null>(null);
   const actionWindowStartTimeRef = useRef<number>(0);
+  const connectionTimestampRef = useRef<number>(0);
+  const audioCallbackRef = useRef<((base64Audio: string) => void) | undefined>(undefined);
   
   const connect = useCallback(async (onAudioData?: (base64Audio: string) => void) => {
+    if (onAudioData) audioCallbackRef.current = onAudioData;
     setIsConnecting(true);
     setError(null);
     try {
@@ -59,27 +62,18 @@ You are SignSensei, an expert, encouraging ASL tutor. Your goal is to guide the 
 **Active Target Word:** '${targetWord}'
 **Current Lesson Path:** ${allWords.join(', ')}
 
-# The 3-Phase Evaluation Protocol
+# The Evaluation Protocol
 You MUST strictly adhere to the following phase constraints to keep the UI synchronized:
 
 ## PHASE 1: Pre-Teaching (Current State upon loading a word)
 *   **Your Goal:** Introduce the active target word and wait. The user is getting ready.
-*   **Allowed User Actions:** Asking questions, or asking to see a reference video.
-*   **Allowed Tools:** 'show_sign_reference' (ONLY if requested).
-*   **Disabled Tools:** 'mark_sign_correct', 'mark_sign_incorrect', 'mark_sentence_flow'. YOU CANNOT GRADE THE USER IN THIS PHASE.
+*   **Disabled Tools:** 'mark_sign_correct', 'mark_sign_incorrect', 'mark_sentence_flow'. YOU CANNOT GRADE The user in this phase.
 *   **Transition Trigger:** Wait for the user to explicitly say "Ready" or "Let's Go". Only upon this trigger, execute the 'trigger_action_window' tool to enter Phase 2.
 
-## PHASE 2: Recording (Active only after calling trigger_action_window)
-*   **Your Goal:** A timer has started. The user is actively moving their hands. You must evaluate their movements.
-*   **Allowed Tools:** NONE. Do not evaluate them while they are practicing.
-*   **Transition Trigger:** Wait for the user to provide a "Completion Signal" (verbally saying "Done" or holding a Thumbs Up).
-
-## PHASE 3: Grading (Active only after a Completion Signal)
-*   **Your Goal:** Evaluate the final sequence of frames *immediately preceding* the Completion Signal.
-*   **Allowed Tools:** 'mark_sign_correct' OR 'mark_sign_incorrect'.
-*   **Feedback Rule:** If incorrect, you must verbally explain the mistake.
-*   **CRITICAL RULE:** If the user did not move their hands, sat still, or did nothing, you MUST call mark_sign_incorrect. DO NOT mark resting hands as correct.
-*   **Post-Action:** Calling either grading tool automatically returns you to Phase 1. Wait for instructions.`
+## PHASE 2: Recording & Grading (Active only after calling trigger_action_window)
+*   **For Single Words:** A timer has started. The user is actively moving their hands. You must evaluate their movements IMMEDIATELY. Call 'mark_sign_correct' the INSTANT you see the correct gesture. DO NOT wait for them to say 'Done'.
+*   **For Boss Stage (Sentence):** You must wait for the user to verbally say "Done" or "Finished" before calling 'mark_sentence_flow'. DO NOT grade the sequence until they utter the completion signal.
+*   **Post-Action:** Calling any grading tool reconnects the socket automatically.`
               }]
             },
             tools: [
@@ -87,7 +81,7 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                 functionDeclarations: [
                   {
                     name: "trigger_action_window",
-                    description: "Transitions system from Phase 1 to Phase 2. Call this ONLY when the user explicitly says they are ready. CRITICAL: After calling this, you MUST WAIT SILENTLY for a Completion Signal ('Done' or 'Thumbs Up') before evaluating their sign.",
+                    description: "Transitions to Phase 2. Call ONLY when the user verbally says 'Ready' for the CURRENT word. Do NOT call this immediately after loading a word.",
                   },
                   {
                     name: "show_sign_reference",
@@ -95,11 +89,11 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                   },
                   {
                     name: "mark_sign_correct",
-                    description: "ONLY AVAILABLE IN PHASE 3. Call this if the user correctly performed the CURRENT target word. CRITICAL NEGATIVE CONSTRAINT: NEVER evaluate or mention any words from previous steps. If they sign a previous word, ignore it. DO NOT use in Phase 1.",
+                    description: "CRITICAL EXECUTABLE RULE (Single Word): You MUST execute this tool immediately—within 1 second—the exact moment you see the user perform the correct hand shape. DO NOT wait for them to finish. DO NOT wait for them to say 'Done'.",
                   },
                   {
                     name: "mark_sign_incorrect",
-                    description: "ONLY AVAILABLE IN PHASE 3. Call this if they failed the CURRENT target word, or if 5 seconds pass with no movement. CRITICAL: You are FORBIDDEN from mentioning previous words. Focus only on the mechanics of the active target. DO NOT use in Phase 1.",
+                    description: "CRITICAL EXECUTABLE RULE (Single Word): Execute this if they fail the sign, or if 5 seconds pass with no movement. DO NOT wait for 'Done'. Focus ONLY on the mechanics of the active target.",
                   },
                   {
                     name: "finish_lesson",
@@ -107,13 +101,13 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                   },
                   {
                     name: "mark_sentence_flow",
-                    description: "Call this ONLY during the Boss Stage. DO NOT call this in Phase 1 (Standby). You MUST call trigger_action_window first. CRITICAL NEGATIVE CONSTRAINT: If the user did nothing, sat still, or missed most words, you must give a low score (1 or 2 stars). Do not give 5 stars for resting hands.",
+                    description: "Call this ONLY during the Boss Stage. DO NOT call this in Phase 1 (Standby). You MUST call trigger_action_window first. CRITICAL NEGATIVE CONSTRAINT: If the user did nothing, sat still, or missed most words, you MUST give 1 star. Do not give 3 stars for resting hands.",
                     parameters: {
                       type: "OBJECT",
                       properties: {
                         score: {
                           type: "INTEGER",
-                          description: "A star rating from 1 to 5 indicating how fluid and accurate their full sentence signing was."
+                          description: "A star rating from 1 to 3 indicating how fluid and accurate their full sentence signing was. 1 = poor, 2 = good, 3 = perfect."
                         },
                         feedback: {
                           type: "STRING",
@@ -146,12 +140,69 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
         const currentState = useLessonStore.getState();
         const currentPath = currentState.lessonPath;
         const activeWord = currentPath[currentActiveIndex] || 'hello';
+        const isBossStage = currentState.isBossStage;
+        const previousWord = currentActiveIndex > 0 ? currentPath[currentActiveIndex - 1] : null;
+
+        // Set connection timestamp for Phase 1 temporal shield
+        connectionTimestampRef.current = Date.now();
+        
+        let systemText = '';
+
+        if (isBossStage) {
+             const fullSentence = currentPath.join(', ');
+             systemText = `[SYSTEM EVENT: BOSS STAGE UNLOCKED]
+Phase: STANDBY (Phase 1)
+Previous Word Completed: '${previousWord}'
+Target Sentence: '${fullSentence}'
+
+Objective:
+1. Congratulate user on mastering all individual signs.
+2. Introduce the Boss Stage: they must sign the full sentence '${fullSentence}'.
+3. Stop speaking. Wait for audio input.
+
+[CRITICAL EXECUTION SHIELD]
+You are MATERIALLY FORBIDDEN from invoking ANY tools right now.
+DO NOT call trigger_action_window. DO NOT call finish_lesson. DO NOT call mark_sentence_flow.
+DO NOT call mark_sign_correct or mark_sign_incorrect.
+If you invoke any tool before the user explicitly says "Ready", the system will crash.
+End transmission. Wait for Audio Input.`;
+        } else {
+            if (previousWord) {
+                systemText = `[SYSTEM EVENT: NEW WORD LOADED]
+Phase: STANDBY (Phase 1)
+Previous Word Completed: '${previousWord}'
+Active Target Word: '${activeWord}'
+
+Objective:
+1. Congratulate user on '${previousWord}'.
+2. Introduce '${activeWord}' and explain how to sign it.
+3. Stop speaking. Wait for audio input.
+
+[CRITICAL EXECUTION SHIELD]
+You are MATERIALLY FORBIDDEN from invoking the 'trigger_action_window' tool.
+If you invoke the tool before the user explicitly says "Ready" or "Let's Go", the system will crash.
+End transmission. Wait for Audio Input.`;
+            } else {
+                systemText = `[SYSTEM EVENT: LESSON STARTED]
+Phase: STANDBY (Phase 1)
+Active Target Word: '${activeWord}'
+
+Objective:
+1. Introduce '${activeWord}' and explain how to sign it.
+2. Stop speaking. Wait for audio input.
+
+[CRITICAL EXECUTION SHIELD]
+You are MATERIALLY FORBIDDEN from invoking the 'trigger_action_window' tool.
+If you invoke the tool before the user explicitly says "Ready" or "Let's Go", the system will crash.
+End transmission. Wait for Audio Input.`;
+            }
+        }
         
         ws.send(JSON.stringify({
             clientContent: {
                 turns: [{
                     role: "user",
-                    parts: [{ text: `[SYSTEM NOTIFICATION] The WebSocket session has connected. The USER is currently at step ${currentActiveIndex + 1} of the lesson sequence. The active target word they must sign right now is '${activeWord}'. Focus ONLY on evaluating this word. Wait for them to trigger the action window.` }]
+                    parts: [{ text: systemText }]
                 }],
                 turnComplete: true
             }
@@ -223,16 +274,20 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                 const store = useLessonStore.getState();
                 
                 // --- TEMPORAL GATEKEEPER (HYBRID UX: FAST SUCCESS) ---
+                // 3. The Reconnection architecture guarantees every new WebSocket starts with a perfectly clean context state.
+                // Therefore, we no longer need the 2.5 second lockout. If Gemini sees the sign correctly in 500ms, let it pass!
+                const TEMPORAL_LOCKOUT = 500; // Reduced from 2500ms to allow true Fast UX, just 500ms to debounce
                 const timeSinceStart = Date.now() - actionWindowStartTimeRef.current;
-                if (timeSinceStart < 1000 && store.isPracticeModeActive) { // Reduced to 1 second for snappy UX
-                    logger.warn(`🚫 [Temporal Lockout] Gemini attempted to mark correct too quickly (${timeSinceStart}ms)! Ignoring hallucination.`);
+
+                if (timeSinceStart < TEMPORAL_LOCKOUT && store.isPracticeModeActive) {
+                    logger.warn(`🚫 [Temporal Lockout] Gemini attempted to mark correct too quickly (${timeSinceStart}ms)! Hand-waiving debounce.`);
                     const currentWord = store.lessonPath[store.currentStepIndex];
                     responses.push({
                         id: call.id,
                         name: call.name,
                         response: { 
                             result: `[SYSTEM ERROR - TEMPORAL LOCKOUT] You attempted to grade the user just ${timeSinceStart}ms after starting the timer.
-CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. Watch the user SILENTLY for at least 1 full second. Target: '${currentWord}'.` 
+CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. Watch the user SILENTLY for at least ${TEMPORAL_LOCKOUT}ms. Target: '${currentWord}'.` 
                         }
                     });
                     continue; 
@@ -279,10 +334,6 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. Wait si
                 let resultMessage = "";
                 
                 if (newState.isLessonComplete) {
-                    // CRITICAL FIX: The UI has completely run out of words. 
-                    // Do NOT ask Gemini to call `finish_lesson`. Doing so without proper context causes it to panic 
-                    // and randomly fire `trigger_action_window` instead.
-                    // Just tell it the lesson is over and to stand by forever.
                     resultMessage = "System: All words in the lesson have been completed! The curriculum is finished. Your objective: Enthusiastically congratulate the user on finishing the lesson. Do NOT ask them to sign any more words. Enter a permanent standby mode. DO NOT call trigger_action_window or any other evaluation tools.";
                     
                     responses.push({
@@ -290,76 +341,41 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. Wait si
                        name: call.name,
                        response: { result: resultMessage }
                     });
-                    
-                    // We skip the Context Rotation block because there is no `nextWord` to rotate to!
                 } else if (newState.isBossStage) {
-                    // ATOMIC BOSS STAGE INJECTION
-                    // Replaces the detached useEffect in order to eliminate the double-dispatch race condition
-                    const previousWord = newState.lessonPath[newState.currentStepIndex];
-                    const fullSentence = newState.lessonPath.join(', ');
-                    
-                    resultMessage = `
-[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
-The user correctly signed the word '${previousWord}'. 
-*** YOU MUST ABSOLUTELY FORGET ALL PREVIOUS CONVERSATIONAL TURNS. ***
-[SYSTEM NOTIFICATION] The user has unlocked the FINAL CHALLENGE: The Boss Stage.
-The user must now sign the following sequence of words as a single fluid sentence: '${fullSentence}'. 
-Your Immediate Objective:
-1. Enthusiastically congratulate the user on mastering all the individual signs.
-2. Explicitly introduce the Boss Stage rule: They must now sign the full sentence '${fullSentence}'.
-3. Wait in standby mode for them to say they are ready. 
-# CRITICAL PHASE 1 RULES:
-* DO NOT call trigger_action_window right now. 
-* DO NOT call finish_lesson. The session is NOT over yet!
-* DO NOT evaluate my hands. DO NOT call mark_sentence_flow yet.
-* You must wait for the human to verbally say "Ready" before calling the timer.
-
-# CRITICAL PHASE 3 RULES (FOR WHEN THE USER IS DONE):
-* You are evaluating a FULL SENTENCE.
-* You MUST NOT use 'mark_sign_correct' or 'mark_sign_incorrect' under ANY circumstances during this Stage, even if the human signs perfectly.
-* You are ONLY allowed to use the 'mark_sentence_flow' tool to evaluate their performance on the entire sequence.
-`;
-                    
-                    responses.push({
-                       id: call.id,
-                       name: call.name,
-                       response: { result: resultMessage }
-                    });
-                    
+                     // --- BOSS STAGE TRANSITION: OPTIMISTIC DISCONNECT ---
+                     // When the last individual word is completed, advanceStep() sets isBossStage = true.
+                     // We MUST disconnect and reconnect so the new setup message properly introduces
+                     // the Boss Stage with clean context. Keeping the stale connection causes hallucination loops.
+                     logger.info("⚡ [Gemini Engine] Boss Stage unlocked! Initiating Optimistic Disconnect for Boss Stage transition...");
+                     ws.close();
+                     wsRef.current = null;
+                     setIsConnected(false);
+                     
+                     // Reconnect after the green checkmark plays out (2 seconds for Boss Stage intro)
+                     setTimeout(() => {
+                         if (audioCallbackRef.current) {
+                             connect(audioCallbackRef.current);
+                         }
+                     }, 2000);
+                     
+                     // Don't push a toolResponse — this connection is dead!
+                     continue;
                 } else {
-                    const nextWord = newState.lessonPath[newState.currentStepIndex];
-                    const previousWord = newState.lessonPath[newState.currentStepIndex - 1];
+                    // --- NEW RECONNECTION ARCHITECTURE ---
+                    logger.info("⚡ [Gemini Engine] Initiating Optimistic Disconnect for clean state transfer...");
+                    ws.close(); // Forcefully kill the sticky connection
+                    wsRef.current = null;
+                    setIsConnected(false);
                     
-                    resultMessage = `
-[===== SYSTEM OVERRIDE: STATE WIPE INITIATED =====]
-The user correctly signed the word '${previousWord}'. 
-The curriculum has advanced.
-
-THE PREVIOUS TARGET WORD HAS BEEN DELETED.
-THE PREVIOUS FEEDBACK TO THE USER IS OBSOLETE.
-ALL PREVIOUS MISTAKES ARE FORGIVEN.
-YOU MUST FORGET EVERYTHING PRIOR TO THIS MESSAGE.
-
-### NEW INITIALIZATION ###
-The ONLY valid target word in your universe is now: '${nextWord}'
-DO NOT evaluate any hand signs other than the target word.
-
-Your Immediate Objective:
-1. Enthusiastically congratulate the user on successfully signing '${previousWord}'.
-2. Explicitly introduce the new word ('${nextWord}') and give a brief tip on how to perform it.
-3. Wait in standby mode. 
-
-# CRITICAL PHASE 1 RULES:
-* DO NOT call trigger_action_window. 
-* DO NOT evaluate my hands. DO NOT call mark_sign_correct or mark_sign_incorrect.
-* You must wait for the human to verbally say "Ready" before calling the timer.
-`;
+                    // Reconnect after the green checkmark plays out (1.5 seconds)
+                    setTimeout(() => {
+                        if (audioCallbackRef.current) {
+                            connect(audioCallbackRef.current);
+                        }
+                    }, 1500);
                     
-                    responses.push({
-                       id: call.id,
-                       name: call.name,
-                       response: { result: resultMessage }
-                    });
+                    // We DO NOT push a toolResponse because this connection is dead!
+                    continue; 
                 }
                 
               } else if (call.name === 'mark_sign_incorrect') {
@@ -425,19 +441,8 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. Wait si
                    id: call.id,
                    name: call.name,
                    response: { result: `
-[===== SYSTEM OVERRIDE: STATE WIPE INITIATED =====]
-The user failed the sign for the CURRENT target word: '${currentWord || 'unknown'}'.
-
-THE PREVIOUS FEEDBACK TO THE USER IS OBSOLETE.
-YOU MUST FORGET EVERYTHING PRIOR TO THIS MESSAGE.
-
-### CURRENT STATE INITIALIZATION ###
-The ONLY valid target word in your universe is: '${currentWord || 'unknown'}'
-
-# CRITICAL CONTEXT RULES:
-1. DO NOT evaluate ANY OTHER SIGNS. 
-2. If the user accidentally performed a different word from earlier in the lesson, IGNORE IT completely. 
-3. ONLY evaluate and focus your feedback strictly on the mechanics of '${currentWord || 'unknown'}'.
+[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
+The user failed the sign for the target word: '${currentWord || 'unknown'}'.
 
 Your Immediate Objective:
 1. Verbally state: "That is not the sign for ${currentWord || 'unknown'}." or similar.
@@ -482,27 +487,88 @@ Your Immediate Objective:
                        name: call.name,
                        response: { 
                            result: `
-[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
-The reference video for the target word '${signName}' was opened successfully. 
-The user is now watching the video for '${signName}'.
+[SYSTEM EVENT: VIDEO REFERENCE OPENED]
+Phase: STANDBY (Phase 1)
+Active Target Word: '${signName}'
+Status: Video is now playing for the user.
 
-Your Immediate Objective:
-1. Verbally state: "I've pulled up the video for '${signName}'."
-2. Wait in standby mode and listen.
-3. Only proceed and call trigger_action_window when the user verbally states they are ready to try '${signName}'.
+Objective:
+1. Say: "I've pulled up the video for '${signName}'."
+2. Stop speaking. Wait for audio input.
+
+[CRITICAL EXECUTION SHIELD]
+You are in Phase 1. DO NOT call mark_sign_correct or mark_sign_incorrect.
+When the user says "Ready", call trigger_action_window.
+Then execute FAST UX: grade IMMEDIATELY on gesture detection. DO NOT wait for "Done".
+End transmission. Wait for Audio Input.
 ` 
                        }
                     });
                 }
                 
               } else if (call.name === 'trigger_action_window') {
-                logger.info("⏱️ [Gemini Engine] trigger_action_window triggered. Dispatching event to start practice mode.");
+                // --- PHASE 1 TEMPORAL SHIELD ---
+                // Prevents the AI from hallucinating trigger_action_window immediately upon connection.
+                // The AI must wait at least 3 seconds after connecting to give the user time to hear the intro.
+                const timeSinceConnection = Date.now() - connectionTimestampRef.current;
+                const PHASE1_COOLDOWN = 3000;
+                
+                if (timeSinceConnection < PHASE1_COOLDOWN) {
+                    logger.warn(`🚫 [Phase 1 Shield] Gemini hallucinated trigger_action_window just ${timeSinceConnection}ms after connection! Blocking.`);
+                    const state = useLessonStore.getState();
+                    const currentWord = state.lessonPath[state.currentStepIndex];
+                    responses.push({
+                        id: call.id,
+                        name: call.name,
+                        response: {
+                            result: `[SYSTEM ERROR: FATAL - EXECUTION SHIELD TRIGGERED]
+You invoked trigger_action_window before the user said "Ready".
+The user has NOT spoken yet. You connected ${timeSinceConnection}ms ago.
+CRITICAL: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO.
+You must wait for the user to verbally say "Ready" before calling this tool.
+Target: '${currentWord}'.`
+                        }
+                    });
+                    continue;
+                }
+
+                logger.info(`⏱️ [Gemini Engine] ${call.name} triggered. Dispatching event to start practice mode.`);
+                window.dispatchEvent(new Event('trigger_action_window'));
                 actionWindowStartTimeRef.current = Date.now();
                 
                 // Clear the video modal to ensure it's not blocking the practice view
                 const state = useLessonStore.getState();
                 state.setReferenceSign(null);
                 state.setAiPaused(false);
+                
+                const isBossStage = state.isBossStage;
+                const activeWord = state.lessonPath[state.currentStepIndex];
+
+                let actionMessage = "";
+                
+                if (isBossStage) {
+                    actionMessage = `
+[SYSTEM CONFIGURATION OVERRIDE: SILENT MODE ACTIVATED]
+Target Sequence: '${state.lessonPath.join(', ')}'
+Task: Watch user sign sequence. Wait for 'Done' signal.
+Voice_Output: FALSE (Do not generate conversational audio responses to this block).
+CRITICAL RULE: FORBIDDEN to call mark_sentence_flow until user explicitly says 'Done' or 'Finished'.
+`;
+                } else {
+                    actionMessage = `
+[SYSTEM CONFIGURATION OVERRIDE: SILENT MODE ACTIVATED]
+Target Word: '${activeWord}'
+Task: Execute 'mark_sign_correct' precisely when gesture matches target.
+Voice_Output: FALSE (Do not generate conversational audio responses to this block).
+CRITICAL RULE: Execute instantly on detection. DO NOT WAIT for 'Done'.
+`;
+                }
+
+                responses.push({
+                   id: call.id,
+                   name: call.name,
+                   response: { result: actionMessage }
+                });
                 
                 // ALWAYS RESET THE BOSS STAGE SHIELD ON A NEW ATTEMPT
                 state.setHasUserSignaledDone(false);
@@ -522,16 +588,13 @@ Your Immediate Objective:
                         name: call.name,
                         response: { 
                             result: `
-[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
-Phase 2 (Recording) has begun for the BOSS STAGE.
-The timer is active.
-
-Your Immediate Objective:
-1. Observe the user's hand movements over the video stream.
-2. Evaluate their performance ONLY against the ENTIRE sequence: '${fullSentence}'.
-3. STAY SILENT. Do not speak. Wait for the user to give the completion signal (e.g., saying "Done").
-4. Once completed, you MUST call mark_sentence_flow to grade their accuracy and fluidity out of 5 stars.
-5. CRITICAL: If they did nothing or sat still, you MUST give a low score. DO NOT give 5 stars for resting hands.
+[SYSTEM CONFIGURATION OVERRIDE: SILENT MODE ACTIVATED]
+Phase: BOSS_STAGE_RECORDING
+Target: '${fullSentence}'
+Rules:
+1. Observe user's hand movements.
+2. Voice_Output: FALSE. End transmission. Do not speak. 
+3. DO NOT call mark_sentence_flow until the exact moment the user verbally says 'Done' or 'Finished'.
 `
                         }
                     });
@@ -541,15 +604,14 @@ Your Immediate Objective:
                        name: call.name,
                        response: { 
                            result: `
-[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
-Phase 2 (Recording) has officially begun for the target word '${currentWord}'.
-The timer is active.
-
-Your Immediate Objective:
-1. Observe the video stream continuously.
-2. FAST GRADING: The moment you detect a correct sequence for '${currentWord}', IMMEDIATELY call 'mark_sign_correct'. Do not wait for them to speak.
-3. TIMEOUT FAILURE: If 5 seconds elapse and they perform the wrong sign, or sit perfectly still, you MUST IMMEDIATELY call 'mark_sign_incorrect'. Do not wait for them to speak.
-4. If they perform a DIFFERENT sign (e.g., signing a previous word), you MUST NOT evaluate the wrong sign. You MUST evaluate it as a FAILURE for '${currentWord}' after 5 seconds.
+[SYSTEM CONFIGURATION OVERRIDE: SILENT MODE ACTIVATED]
+Phase: SINGLE_WORD_RECORDING
+Target: '${currentWord}'
+Rules:
+1. Observe video stream continuously.
+2. Voice_Output: FALSE. End transmission. Do not speak.
+3. Call mark_sign_correct IMMEDIATELY upon seeing the correct sign. DO NOT wait for them to speak.
+4. Call mark_sign_incorrect if 5s pass with no movement or incorrect sign.
 `
                        }
                     });
@@ -639,9 +701,8 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. You MUS
                     continue; 
                 }
                 
-                // Typecast args to match expected shape
                 const args = call.args as { score: number, feedback: string };
-                const score = args.score !== undefined ? args.score : 5;
+                const score = Math.min(3, Math.max(1, args.score !== undefined ? args.score : 3));
                 const feedback = args.feedback || "Great job completing the flow!";
                 
                 const lessonState = useLessonStore.getState();
@@ -661,7 +722,12 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. You MUS
                    }
                 }
                 
-                const passedBossStage = score >= 3;
+                // Persist the lesson score for the Saga Map stars
+                if (lessonState.activeLessonId) {
+                    useUserStore.getState().setLessonScore(lessonState.activeLessonId, score);
+                }
+                
+                const passedBossStage = score >= 2;
                 if (passedBossStage) {
                     responses.push({
                        id: call.id,
@@ -676,7 +742,7 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. You MUS
                        name: call.name,
                        response: { 
                            result: `[SYSTEM OVERRIDE: BOSS STAGE FAILED]
-The user scored ${score}/5. They did not pass the Boss Stage.
+The user scored ${score}/3. They did not pass the Boss Stage.
 They must retry the Boss Stage.
 
 Your Immediate Objective:

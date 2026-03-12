@@ -114,7 +114,7 @@ export const useLessonStore = create<LessonState>((set) => ({
   }),
 
   completeLessonFlow: (score, feedback) => set(() => {
-      const passedBossStage = score >= 3;
+      const passedBossStage = score >= 2;
       
       return {
           finalScore: score,
@@ -127,7 +127,7 @@ export const useLessonStore = create<LessonState>((set) => ({
           isLessonComplete: passedBossStage,
           isBossStage: !passedBossStage,
           mascotEmotion: passedBossStage ? 'success' : 'error',
-          status: passedBossStage ? 'success' : 'error' // Ensure the status briefly flashes so the UI updates
+          status: passedBossStage ? 'success' : 'error'
       };
   }),
 
