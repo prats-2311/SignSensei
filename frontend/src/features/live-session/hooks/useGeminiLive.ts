@@ -95,11 +95,11 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                   },
                   {
                     name: "mark_sign_correct",
-                    description: "ONLY AVAILABLE IN PHASE 3. Call this if the user correctly performed the target word. Do not mark resting hands as correct. DO NOT use in Phase 1.",
+                    description: "ONLY AVAILABLE IN PHASE 3. Call this if the user correctly performed the CURRENT target word. CRITICAL NEGATIVE CONSTRAINT: NEVER evaluate or mention any words from previous steps. If they sign a previous word, ignore it. DO NOT use in Phase 1.",
                   },
                   {
                     name: "mark_sign_incorrect",
-                    description: "ONLY AVAILABLE IN PHASE 3. Call this if they failed the sign. Wait watchfully for at least 4 seconds before deciding they failed. If they sit perfectly still for 4+ seconds, then call this tool. You must verbally explain their error. DO NOT use in Phase 1.",
+                    description: "ONLY AVAILABLE IN PHASE 3. Call this if they failed the CURRENT target word, or if 5 seconds pass with no movement. CRITICAL: You are FORBIDDEN from mentioning previous words. Focus only on the mechanics of the active target. DO NOT use in Phase 1.",
                   },
                   {
                     name: "finish_lesson",
@@ -107,7 +107,7 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                   },
                   {
                     name: "mark_sentence_flow",
-                    description: "Call this ONLY during the Boss Stage. CRITICAL NEGATIVE CONSTRAINT: If the user did nothing, sat still, or missed most words, you must give a low score (1 or 2 stars). Do not give 5 stars for resting hands.",
+                    description: "Call this ONLY during the Boss Stage. DO NOT call this in Phase 1 (Standby). You MUST call trigger_action_window first. CRITICAL NEGATIVE CONSTRAINT: If the user did nothing, sat still, or missed most words, you must give a low score (1 or 2 stars). Do not give 5 stars for resting hands.",
                     parameters: {
                       type: "OBJECT",
                       properties: {
@@ -190,10 +190,10 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                logger.info(`🗣️ [User Voice]: ${rawTranscript}`);
                
                const lowerTranscript = rawTranscript.toLowerCase();
-               if (lowerTranscript.includes("done") || lowerTranscript.includes("finished") || lowerTranscript.includes("ready")) {
+               if (lowerTranscript.includes("done") || lowerTranscript.includes("finished")) {
                    // Event-Driven trigger: Drops the lockout shields for Boss Stage grading
                    useLessonStore.getState().setHasUserSignaledDone(true);
-                   logger.info("🔓 [Frontend Gatekeeper] User said 'Done/Ready'. Grading tools are now unlocked.");
+                   logger.info("🔓 [Frontend Gatekeeper] User said 'Done/Finished'. Grading tools are now unlocked.");
                }
             }
 
@@ -331,18 +331,18 @@ Your Immediate Objective:
                     const previousWord = newState.lessonPath[newState.currentStepIndex - 1];
                     
                     resultMessage = `
-[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
+[===== SYSTEM OVERRIDE: STATE WIPE INITIATED =====]
 The user correctly signed the word '${previousWord}'. 
 The curriculum has advanced.
 
-*** YOU MUST ABSOLUTELY FORGET ALL PREVIOUS CONVERSATIONAL TURNS. ***
-*** THE NEW TARGET WORD IS: '${nextWord}' ***
+THE PREVIOUS TARGET WORD HAS BEEN DELETED.
+THE PREVIOUS FEEDBACK TO THE USER IS OBSOLETE.
+ALL PREVIOUS MISTAKES ARE FORGIVEN.
+YOU MUST FORGET EVERYTHING PRIOR TO THIS MESSAGE.
 
-# NEW RULE OF ENGAGEMENT:
-You are now exclusively teaching '${nextWord}'. You must ignore ALL previously taught words (like '${previousWord}'). If the user accidentally signs '${previousWord}', you must treat it as a failure for '${nextWord}'. DO NOT evaluate old words anymore.
-
-You are now in Phase 1 (Standby).
-I am at the new word '${nextWord}'. 
+### NEW INITIALIZATION ###
+The ONLY valid target word in your universe is now: '${nextWord}'
+DO NOT evaluate any hand signs other than the target word.
 
 Your Immediate Objective:
 1. Enthusiastically congratulate the user on successfully signing '${previousWord}'.
@@ -425,8 +425,14 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. Wait si
                    id: call.id,
                    name: call.name,
                    response: { result: `
-[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
+[===== SYSTEM OVERRIDE: STATE WIPE INITIATED =====]
 The user failed the sign for the CURRENT target word: '${currentWord || 'unknown'}'.
+
+THE PREVIOUS FEEDBACK TO THE USER IS OBSOLETE.
+YOU MUST FORGET EVERYTHING PRIOR TO THIS MESSAGE.
+
+### CURRENT STATE INITIALIZATION ###
+The ONLY valid target word in your universe is: '${currentWord || 'unknown'}'
 
 # CRITICAL CONTEXT RULES:
 1. DO NOT evaluate ANY OTHER SIGNS. 
@@ -439,9 +445,6 @@ Your Immediate Objective:
 3. CRITICAL: DO NOT mention any other signs they may have accidentally performed. Only talk about '${currentWord || 'unknown'}'.
 4. Tell them they can say "Show me" to watch the reference video, or "Ready" to try '${currentWord || 'unknown'}' again.
 5. Enter Phase 1 (Standby) and wait.
-
-*** YOU MUST ABSOLUTELY FORGET ALL PREVIOUS CONVERSATIONAL TURNS. ***
-*** THE NEW TARGET WORD IS: '${currentWord || 'unknown'}' ***
 
 # CRITICAL PHASE 1 RULES:
 * DO NOT advance the curriculum. 
@@ -501,6 +504,9 @@ Your Immediate Objective:
                 state.setReferenceSign(null);
                 state.setAiPaused(false);
                 
+                // ALWAYS RESET THE BOSS STAGE SHIELD ON A NEW ATTEMPT
+                state.setHasUserSignaledDone(false);
+                
                 // Dispatch a custom event that LiveSession.tsx can listen for
                 window.dispatchEvent(new CustomEvent('start-practice-mode'));
                 
@@ -540,12 +546,10 @@ Phase 2 (Recording) has officially begun for the target word '${currentWord}'.
 The timer is active.
 
 Your Immediate Objective:
-1. Observe the user's hand movements over the video stream.
-2. The ONLY acceptable successful behavior is the exact target word '${currentWord}'.
-3. If they perform a DIFFERENT sign (e.g., signing 'hello' when the word is 'my'), you MUST NOT evaluate the wrong sign. You MUST evaluate it as a FAILURE for '${currentWord}'.
-4. STAY SILENT. Do not speak. Wait for the user to give the completion signal (e.g., saying "Done" or dropping their hands).
-5. Once completed, you MUST call either mark_sign_correct or mark_sign_incorrect.
-6. CRITICAL: If they did nothing or sat still, you MUST call mark_sign_incorrect. DO NOT mark resting hands as correct.
+1. Observe the video stream continuously.
+2. FAST GRADING: The moment you detect a correct sequence for '${currentWord}', IMMEDIATELY call 'mark_sign_correct'. Do not wait for them to speak.
+3. TIMEOUT FAILURE: If 5 seconds elapse and they perform the wrong sign, or sit perfectly still, you MUST IMMEDIATELY call 'mark_sign_incorrect'. Do not wait for them to speak.
+4. If they perform a DIFFERENT sign (e.g., signing a previous word), you MUST NOT evaluate the wrong sign. You MUST evaluate it as a FAILURE for '${currentWord}' after 5 seconds.
 `
                        }
                     });
@@ -586,8 +590,41 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. YOU MUST WAIT FOR THE USER TO COMPLETE THE B
               } else if (call.name === 'mark_sentence_flow') {
                 logger.info("🌟 [Gemini Engine] mark_sentence_flow triggered! Boss Stage Complete.");
 
-                // --- EVENT-DRIVEN GATEKEEPER (HYBRID UX: STRICT BOSS STAGE) ---
+                // --- TEMPORAL AND EVENT-DRIVEN GATEKEEPER (HYBRID UX: STRICT BOSS STAGE) ---
+                const timeSinceStart = Date.now() - actionWindowStartTimeRef.current;
                 const store = useLessonStore.getState();
+                
+                // Physical Minimum Time: Impossible to sign a multi-word sequence in under 5 seconds.
+                if (timeSinceStart < 5000 && store.isPracticeModeActive) { 
+                    logger.warn(`🚫 [Temporal Lockout - Boss Stage] Gemini attempted to grade Boss Stage too quickly (${timeSinceStart}ms)! Blocking.`);
+                    const fullSentence = store.lessonPath.join(', ');
+                    responses.push({
+                        id: call.id,
+                        name: call.name,
+                        response: {
+                            result: `[SYSTEM ERROR - TEMPORAL LOCKOUT] You attempted to grade the entire sentence just ${timeSinceStart}ms after starting the timer.
+CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. Watch the user SILENTLY for at least 5 seconds, AND wait for them to explicitly say 'Done'. Target: '${fullSentence}'.`
+                        }
+                    });
+                    continue;
+                }
+
+                // --- FRONTEND GATEKEEPER (ANTI-HALLUCINATION) ---
+                // Physically prevents the AI from grading if the Phase 2 timer never started.
+                if (!store.isPracticeModeActive) {
+                    logger.warn("🚫 [System Lockout] Gemini attempted to call mark_sentence_flow before trigger_action_window was called! Ignoring hallucination.");
+                    const fullSentence = store.lessonPath.join(', ');
+                    responses.push({
+                        id: call.id,
+                        name: call.name,
+                        response: {
+                            result: `[SYSTEM ERROR - ACTION BLOCKED] You attempted to grade the user before calling trigger_action_window.
+CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. Wait silently in Phase 1 Standby mode. DO NOT evaluate the user until they say 'Ready' and you call trigger_action_window. Target: '${fullSentence}'.`
+                        }
+                    });
+                    continue;
+                }
+
                 if (!store.hasUserSignaledDone && store.isPracticeModeActive) {
                     logger.warn(`🚫 [Event Lockout] Gemini attempted to grade Boss Stage before user said "Done"! Blocking.`);
                     const fullSentence = store.lessonPath.join(', ');
