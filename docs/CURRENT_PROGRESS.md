@@ -12,6 +12,8 @@
 - **Hardware Integration:** successfully tested browser microphone and webcam permissions.
 - **Gemini Handshake:** Successfully established BidiGenerateContent connection targeting `gemini-live-2.5-flash-native-audio` on Vertex AI.
 - **AI Tool Calling:** Successfully passed the `update_avatar_state` schema to Gemini and verified it triggers Zustand UI state updates (XP increase, animations) based on voice commands.
+- **Gemini Engine Hardening:** Fixed Severe Context Overload API crashes by implementing a "Context Rotation" strategy with Semantic Decoupling to forcefully manage the AI's memory window mid-session.
+- **State Synchronization:** Bulletproofed the `isPracticeModeActive` tracking to perfectly sync the frontend UI camera framerates with the AI's internal evaluation phases, preventing rapid-fire hallucination loops.
 
 ## 🟡 Current Status (In Progress)
 The core infrastructure for the Live AI Tutor is fully functional! We have a stable WebSocket connection, the ability to stream audio/video to the model, and the model is successfully firing JSON tool calls that govern our UI state. The next major phase is converting the AI's logic to control the actual 3D avatar and structuring the exercise logic using the `CURRENT_PROGRESS.md` steps.

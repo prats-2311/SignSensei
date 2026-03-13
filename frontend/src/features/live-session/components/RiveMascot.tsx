@@ -1,4 +1,4 @@
-import { useRive } from '@rive-app/react-canvas';
+import { useRive, useStateMachineInput } from '@rive-app/react-canvas';
 import { useEffect } from 'react';
 import { useLessonStore } from '../../../stores/useLessonStore';
 
@@ -18,19 +18,25 @@ export function RiveMascot() {
     autoplay: true,
   });
 
-  // Example inputs (we would replace these with actual inputs from our custom .riv file)
-  // const isHappyInput = useStateMachineInput(rive, "State Machine 1", "isHappy");
-  // const comboLevelInput = useStateMachineInput(rive, "State Machine 1", "comboLevel");
+  // Using a numeric input 'level' on the 'bumpy' state machine based on Rive docs for this example
+  const levelInput = useStateMachineInput(rive, "bumpy", "level");
 
   useEffect(() => {
-    if (rive) {
-      // Logic to trigger Rive inputs based on 'mascotEmotion'
-      // if (mascotEmotion === 'success' && isHappyInput) isHappyInput.value = true;
-      // if (mascotEmotion === 'error' && isHappyInput) isHappyInput.value = false;
+    if (rive && levelInput) {
+      // The 'vehicles.riv' bump state machine uses 'level'
+      // Normal/Idle state = 2
+      // Bumpy/Success state = 0
+      if (mascotEmotion === 'success') {
+          // eslint-disable-next-line react-hooks/immutability
+          levelInput.value = 0; 
+      } else {
+          // eslint-disable-next-line react-hooks/immutability
+          levelInput.value = 2;
+      }
       
       console.log("Rive Mascot Logic Triggered:", mascotEmotion, combo);
     }
-  }, [mascotEmotion, combo, rive]);
+  }, [mascotEmotion, combo, rive, levelInput]);
 
   return (
     <div className="w-32 h-32 absolute bottom-20 right-4 pointer-events-none z-10 filter drop-shadow-xl">

@@ -4,7 +4,7 @@ export class VideoCapture {
   private stream: MediaStream | null = null;
   private intervalId: number | null = null;
 
-  async startCamera(videoRef: HTMLVideoElement, onFrame: (base64Jpeg: string) => void, fps: number = 1) {
+  async startCamera(videoRef: HTMLVideoElement, onFrame: (base64Jpeg: string) => void, fps: number = 0) {
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: 640, height: 480 }
@@ -32,7 +32,9 @@ export class VideoCapture {
         onFrame(base64Str);
       };
 
-      this.intervalId = window.setInterval(captureFrame, 1000 / fps);
+      if (fps > 0) {
+          this.intervalId = window.setInterval(captureFrame, 1000 / fps);
+      }
 
     } catch (err) {
       console.error("Error accessing camera:", err);
@@ -58,7 +60,12 @@ export class VideoCapture {
   }
 
   changeFramerate(fps: number, onFrame: (base64Jpeg: string) => void) {
-      if (this.intervalId) window.clearInterval(this.intervalId);
+      if (this.intervalId) {
+          window.clearInterval(this.intervalId);
+          this.intervalId = null;
+      }
+      
+      if (fps <= 0) return;
       
       const captureFrame = () => {
         if (!this.videoElement || !this.videoElement.videoWidth || !this.canvasElement) return;

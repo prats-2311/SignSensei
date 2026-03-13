@@ -38,11 +38,14 @@ To maintain security, the app never exposes the API Key.
 
 ### **Phase B: The "Live" Evaluation Loop**
 
-1. **Dynamic Streaming:** React utilizes a "Smart Framerate" hook:  
-   * **Listening State:** 1 FPS (conserves tokens while AI speaks).  
-   * **Action State:** 10-15 FPS (captures fluid sign motion when user practices).  
-2. **Context Management:** Initialized with contextWindowCompression: { slidingWindow: {} } to allow unlimited session length by sliding the 131k token window.  
-3. **Barge-In:** Native Voice Activity Detection (VAD) allows the user to interrupt the AI at any time.
+1. **Strict Phased Evaluation:** Gemini operates under rigid System Instructions to prevent hallucination.
+   * **Phase 1 (Standby):** The microphone is open, but AI evaluation is disabled. Waiting for human verbal "Ready".
+   * **Phase 2 (Recording):** The timer triggers `isPracticeModeActive = true`. Webcam samples up to 15 FPS. Gemini watches but does *not* evaluate.
+   * **Phase 3 (Evaluation):** User signals completion ("Done" / Thumbs Up). Gemini evaluates the recorded frames and fires `mark_sign_correct` or `mark_sign_incorrect`.
+2. **Context Rotation:** The Gemini Live API architecture restricts mid-session `setup` payloads. To prevent "Context Overload" (amnesia) during multi-word lessons, we inject a massive, highly-redundant `clientContent` text block upon scoring a sign correctly. This forcefully scrolls the context window, commanding the AI to forget the previous word and focus entirely on the new target.
+3. **Semantic Decoupling:** Context Rotation blocks are explicitly scrubbed of target action words (like "ready") to strictly prevent the AI's pattern-matching engine from hallucinating a `trigger_action_window` tool call due to its own synthetic injection.
+4. **Tool Observability:** The WebSocket intercepts the `msg.serverContent.modelTurn.parts[].text` data stream to capture real-time AI unprompted speech, pumping it directly into the backend logger to provide internal reasoning transparency.
+5. **Barge-In:** Native Voice Activity Detection (VAD) allows the user to interrupt the AI at any time.
 
 ### **Phase C: Asynchronous UI Orchestration**
 
