@@ -22,7 +22,7 @@ export const LESSONS: LessonData[] = [
     path: [
       { word: 'hello', description: 'Place your hand, palm facing forward, and bring it to your forehead for a salute.' },
       { word: 'my', description: 'Take your open hand and place it flat against your chest.' },
-      { word: 'name', description: 'Use your H-handshape (two fingers together) and tap it twice on your chest.' },
+      { word: 'name', description: 'Make H-handshapes with both hands (index and middle fingers extended together, horizontal). Tap your dominant H-hand twice across the fingers of your non-dominant H-hand at mid-chest level.' },
       { word: 'nice', description: 'Place your non-dominant hand flat, palm up. Brush your dominant hand across it from fingertips to wrist.' },
       { word: 'meet', description: 'Hold both hands in "1" shapes, palms facing each other, and bring them together.' },
       { word: 'you', description: 'Point your index finger toward the other person.' }

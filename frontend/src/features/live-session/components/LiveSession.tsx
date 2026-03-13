@@ -11,8 +11,8 @@ const videoCapture = new VideoCapture();
 export function LiveSession({ onEnd }: { onEnd: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isActive, setIsActive] = useState(false);
-  const { isConnected, isConnecting, error, connect, disconnect, sendAudioData, sendVideoData } = useGeminiLive();
-  const { lessonPath, currentStepIndex, isPracticeModeActive, setPracticeModeActive, isBossStage, finalScore, feedback, isLessonComplete } = useLessonStore();
+  const { isConnected, isConnecting, error, connect, disconnect, sendAudioData, sendVideoData, sendClientContent } = useGeminiLive();
+  const { lessonPath, currentStepIndex, isPracticeModeActive, setPracticeModeActive, isBossStage, finalScore, feedback, status: feedbackStatus, isLessonComplete } = useLessonStore();
   const [isRecordingBuffer, setIsRecordingBuffer] = useState(false);
 
   const handleStart = async () => {
@@ -66,6 +66,11 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
   // Trigger native model-driven recording phase immediately with a HARD timeout
   const startPracticeMode = useCallback(() => {
       setPracticeModeActive(true);
+
+      // FIX (I'm Ready Button): Inject a clientContent message to Gemini to force trigger_action_window.
+      // The button sets the camera running immediately (good UX), and this injection ensures Gemini
+      // enters Phase 2 even if it didn't hear the user say "ready" verbally.
+      sendClientContent(`[USER BUTTON: Ready] The user has explicitly clicked the 'I'm Ready' button. This is equivalent to saying 'I am ready'. If you are in Phase 1, call trigger_action_window now to start observation mode.`);
       
       // Clear any existing timeouts just in case
       if (practiceTimeoutRef.current) {
@@ -98,7 +103,7 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
          }
       }, 15000); // 15 seconds max recording time
       
-  }, [setPracticeModeActive, disconnect]);
+  }, [setPracticeModeActive, disconnect, sendClientContent]);
   
   // Listen for the AI triggering the action window
   useEffect(() => {
@@ -219,9 +224,22 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
                 )}
                 
              </div>
-          )}
+           )}
 
-          {/* Enhanced Victory State */}
+           {/* Lesson-Phase Feedback Card: shows specific_feedback from mark_sign_incorrect.
+               Persists between attempts until cleared by the next trigger_action_window. */}
+           {isActive && isConnected && !isLessonComplete && feedback && (
+              <div className={`mx-auto w-full animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-lg p-3 border text-sm text-left mt-1 ${
+                 feedbackStatus === 'error'
+                   ? 'bg-red-500/10 border-red-500/20 text-red-400'
+                   : 'bg-muted/40 border-border/50 text-muted-foreground'
+              }`}>
+                 <span className="font-semibold mr-1">{feedbackStatus === 'error' ? '❌' : 'ℹ️'}</span>
+                 {feedback}
+              </div>
+           )}
+
+           {/* Enhanced Victory State */}
           {isLessonComplete && (
              <div className="py-6 flex flex-col items-center space-y-4 animate-in zoom-in slide-in-from-bottom-4 duration-500">
                 <div className="bg-green-500/20 text-green-500 rounded-full p-4 mb-2">

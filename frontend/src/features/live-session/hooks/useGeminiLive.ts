@@ -287,8 +287,16 @@ End transmission. Wait for Audio Input.`;
                logger.info(`🗣️ [User Voice]: ${rawTranscript}`);
                
                const lowerTranscript = rawTranscript.toLowerCase();
-               if (lowerTranscript.includes("done") || lowerTranscript.includes("finished")) {
-                   // Event-Driven trigger: Drops the lockout shields for Boss Stage grading
+               // FIX (Edge Case 2 + 3): Gate gatekeeper on practiceModeActive AND use word-boundary
+               // regex. Without this, saying "Done" in Phase 1 (e.g. to close a video) would
+               // incorrectly arm the Trojan Horse. Also prevents substring matches like "well done".
+               const isDoneSignal = /\bdone\b/.test(lowerTranscript) || /\bfinished\b/.test(lowerTranscript);
+               const isPracticeActive = useLessonStore.getState().isPracticeModeActive;
+               const isVideoOpen = useLessonStore.getState().referenceSign !== null;
+               // FIX (Edge Case Video): Also suppress if a reference video is currently showing.
+               // The user saying "Done" to close the video should not arm the grading pipeline.
+               if (isDoneSignal && isPracticeActive && !isVideoOpen) {
+                   // Event-Driven trigger: Arms the grading shield ONLY during Phase 2 observation.
                    useLessonStore.getState().setHasUserSignaledDone(true);
                    logger.info("🔓 [Frontend Gatekeeper] User said 'Done/Finished'. Grading tools are now unlocked.");
                }
@@ -411,6 +419,12 @@ End transmission. Wait for Audio Input.`;
                   // === TROJAN HORSE: Phase 2 -> Phase 3 Transition ===
                   // The frontend heard "Done" and set the flag. Now we hijack the next
                   // resting tool response to command Gemini to switch to Phase 3.
+                  //
+                  // FIX (Trojan Horse Spam): Reset the flag IMMEDIATELY before pushing the response.
+                  // Multiple user_is_resting calls queued simultaneously (from Gemini's batch polling)
+                  // would all see hasUserSignaledDone=true and inject 7+ override messages.
+                  // Resetting synchronously here ensures ONLY the first call injects the override.
+                  store.setHasUserSignaledDone(false);
                   logger.info("🎯 [Trojan Horse] Done signal was set. Injecting Phase 3 override into resting tool response.");
                   responses.push({
                     id: call.id,
@@ -506,7 +520,19 @@ Grading criteria:
               } else if (call.name === 'mark_sign_incorrect') {
                 const store = useLessonStore.getState();
 
-                // === SAFETY SHIELD: Block if user hasn't signaled done ===
+                // === SAFETY SHIELD 1: Block during Boss Stage ===
+                // In the Boss Stage, Gemini must use mark_sentence_flow (1-3 stars), not mark_sign_incorrect.
+                if (store.isBossStage) {
+                  logger.warn(`🚫 [Boss Stage Guard] Gemini called mark_sign_incorrect during Boss Stage! Redirecting to mark_sentence_flow.`);
+                  responses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: `[SYSTEM ERROR] FORBIDDEN TOOL IN BOSS STAGE. 'mark_sign_incorrect' does not exist in the Boss Stage. The Boss Stage uses a star rating system. You MUST call 'mark_sentence_flow' instead. Evaluate the full sentence and call mark_sentence_flow with a score of 1 (poor), 2 (good), or 3 (perfect), plus specific feedback on their transitions between signs.` }
+                  });
+                  continue;
+                }
+
+                // === SAFETY SHIELD 2: Block if user hasn't signaled done ===
                 // This is a last-resort guard in case Gemini ignores the phase rules.
                 if (!store.hasUserSignaledDone) {
                   logger.warn(`🚫 [Event Lockout] Gemini attempted to mark_sign_incorrect before user said "Done"! Blocking.`);
@@ -534,11 +560,9 @@ Grading criteria:
                    userStore.recordWeakWord(currentWord);
                 }
                 
-                // Let the error state breathe for 2 seconds, then reset
-                setTimeout(() => {
-                   useLessonStore.getState().resetStatusToIdle();
-                   useLessonStore.getState().setFeedback("", "idle");
-                }, 2000);
+                // FIX (Feedback): Do NOT auto-clear feedback after 2 seconds.
+                // The feedback is now cleared only when a new attempt begins (trigger_action_window).
+                // This gives the user time to read it at their own pace between attempts.
 
                 // Reset to Phase 1: stop practice mode, reset all gating flags.
                 store.setPracticeModeActive(false);
@@ -563,9 +587,9 @@ Target Word: '${currentWord}' (UNCHANGED. Do NOT advance.)
 Result: FAILED
 
 Your Immediate Objective:
-1. Say "That was not the sign for '${currentWord}'."
-2. Give specific guidance on the exact mechanics they got wrong.
-3. Tell them: "Say 'Show me' to see a demo, or 'Ready' to try again."
+1. Say EXACTLY: "That was not the sign for '${currentWord}'. ${feedbackText}"
+2. Tell them: "Say 'Show me' to see a demo, or 'Ready' to try again."
+3. Do NOT paraphrase the feedback. Say it verbatim.
 
 PHASE 1 RULES — STRICTLY ENFORCED:
 - You may NOT call 'trigger_grading_window'.
@@ -624,13 +648,29 @@ End transmission. Wait for Audio Input.
                 
               } else if (call.name === 'trigger_action_window') {
 
-                logger.info(`⏱️ [Gemini Engine] \${call.name} triggered. Dispatching event to start practice mode.`);
-                window.dispatchEvent(new Event('trigger_action_window'));
+                const state = useLessonStore.getState();
+
+                // FIX (Edge Case 1): Idempotent Phase 2 handler.
+                // If already in Phase 2 (user clicked "I'm Ready" and camera started, or said "ready"
+                // accidentally while signing), don't restart the camera — just re-confirm Phase 2
+                // to Gemini so it starts/continues the user_is_resting loop.
+                const isAlreadyInPhase2 = state.isPracticeModeActive;
+
+                if (isAlreadyInPhase2) {
+                  logger.info(`⏱️ [Gemini Engine] ${call.name} called while Phase 2 already active. Re-confirming Phase 2 without restarting camera.`);
+                } else {
+                  // FIX (Log): Properly interpolate call.name in log message.
+                  logger.info(`⏱️ [Gemini Engine] ${call.name} triggered. Dispatching event to start practice mode.`);
+                  window.dispatchEvent(new Event('trigger_action_window'));
+                }
                 
                 // Clear the video modal to ensure it's not blocking the practice view
-                const state = useLessonStore.getState();
                 state.setReferenceSign(null);
                 state.setAiPaused(false);
+                // FIX (Feedback): Clear error feedback when a new attempt begins.
+                // Feedback now persists after mark_sign_incorrect without a timeout,
+                // so we must clear it here to give a fresh slate for the new attempt.
+                state.setFeedback("", "idle");
                 
                 const activeWordObj = state.lessonPath[state.currentStepIndex];
                 const activeWord = activeWordObj ? activeWordObj.word : 'unknown';
@@ -667,11 +707,13 @@ Wait for that override command. Do not guess. Do not act early.`;
                    response: { result: actionMessage }
                 });
                 
-                // ALWAYS RESET THE BOSS STAGE SHIELD ON A NEW ATTEMPT
-                state.setHasUserSignaledDone(false);
-                
-                // Dispatch a custom event that LiveSession.tsx can listen for
-                window.dispatchEvent(new CustomEvent('start-practice-mode'));
+                // Only dispatch start-practice-mode event if Phase 2 is freshly starting.
+                // If already in Phase 2 (e.g. button was clicked), skip the event to avoid
+                // restarting the camera and resetting the UI state.
+                if (!isAlreadyInPhase2) {
+                  state.setHasUserSignaledDone(false);
+                  window.dispatchEvent(new CustomEvent('start-practice-mode'));
+                }
                 
               } else if (call.name === 'finish_lesson') {
                 const lessonState = useLessonStore.getState();
