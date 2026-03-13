@@ -13,6 +13,7 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
   const [isActive, setIsActive] = useState(false);
   const { isConnected, isConnecting, error, connect, disconnect, sendAudioData, sendVideoData } = useGeminiLive();
   const { lessonPath, currentStepIndex, isPracticeModeActive, setPracticeModeActive, isBossStage, finalScore, feedback, isLessonComplete } = useLessonStore();
+  const [isRecordingBuffer, setIsRecordingBuffer] = useState(false);
 
   const handleStart = async () => {
     try {
@@ -70,6 +71,12 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
       if (practiceTimeoutRef.current) {
          clearTimeout(practiceTimeoutRef.current);
       }
+      
+      // Visual Recording Buffer
+      setIsRecordingBuffer(true);
+      setTimeout(() => {
+          setIsRecordingBuffer(false);
+      }, 1500);
       
       // EDGE CASE 1 (The "Frozen/Walkaway" User):
       // If the user triggers the camera but then walks away or stares blankly for 15 seconds,
@@ -199,8 +206,14 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
                          LIVE RECORDING
                       </div>
                       <p className="text-sm text-muted-foreground font-medium">Say "Done" or give a Thumbs Up when finished.</p>
-                      <Button onClick={endPracticeMode} variant="secondary" className="w-full max-w-[200px] border-border bg-card shadow-sm hover:bg-muted" size="lg">
-                         Done / Finish
+                      <Button 
+                         onClick={endPracticeMode} 
+                         variant="secondary" 
+                         className={`w-full max-w-[200px] border-border bg-card shadow-sm hover:bg-muted ${isRecordingBuffer ? 'opacity-50 cursor-not-allowed' : ''}`} 
+                         size="lg"
+                         disabled={isRecordingBuffer}
+                      >
+                         {isRecordingBuffer ? 'Recording...' : 'Done / Finish'}
                       </Button>
                    </div>
                 )}

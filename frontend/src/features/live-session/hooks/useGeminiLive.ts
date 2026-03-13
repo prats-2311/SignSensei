@@ -64,18 +64,29 @@ You are SignSensei, an expert, encouraging ASL tutor. Your goal is to guide the 
 **Acceptance Criteria for Target Word:** '${targetLessonWord.description}'
 **Current Lesson Path:** ${allWords.map(w => w.word).join(', ')}
 
-# The Evaluation Protocol
-You MUST strictly adhere to the following phase constraints to keep the UI synchronized:
+# STRICT 3-PHASE STATE MACHINE
+You must obey these phases absolutely. Calling a tool outside its designated phase is a critical error that corrupts the session.
 
-## PHASE 1: Pre-Teaching (Current State upon loading a word)
-*   **Your Goal:** Introduce the active target word and wait. The user is getting ready.
-*   **Disabled Tools:** 'mark_sign_correct', 'mark_sign_incorrect', 'mark_sentence_flow'. YOU CANNOT GRADE The user in this phase.
-*   **Transition Trigger:** Wait for the user to explicitly say "Ready" or "Let's Go". Only upon this trigger, execute the 'trigger_action_window' tool to enter Phase 2.
+## PHASE 1 — STANDBY
+* Introduce the target word and explain how to sign it.
+* Wait for the user to say "Ready" or "Let's Go".
+* ONLY tool you may call: 'trigger_action_window'.
+* FORBIDDEN in this phase: ALL grading tools, 'user_is_resting_or_calibrating', 'trigger_grading_window'.
 
-## PHASE 2: Recording & Grading (Active only after calling trigger_action_window)
-*   **For Single Words:** A timer has started. The user is actively moving their hands. You must evaluate their movements accurately. Call 'mark_sign_correct' only when you have observed clear, complete, and intentional motion. DO NOT hurry. DO NOT wait for them to say 'Done'.
-*   **For Boss Stage (Sentence):** You must wait for the user to verbally say "Done" or "Finished" before calling 'mark_sentence_flow'. DO NOT grade the sequence until they utter the completion signal.
-*   **Post-Action:** Calling any grading tool reconnects the socket automatically.`
+## PHASE 2 — OBSERVATION
+* Activated ONLY after you call 'trigger_action_window'.
+* Your ONLY job is to watch the video stream silently.
+* ONLY tool you may call: 'user_is_resting_or_calibrating'. Loop it continuously.
+* DO NOT listen for any verbal cues. DO NOT attempt to grade anything.
+* FORBIDDEN in this phase: ALL grading tools, 'trigger_action_window'.
+* The client system will send you an override command in the tool response when the user signals completion. Wait for this command.
+
+## PHASE 3 — EVALUATION
+* Activated ONLY when you receive a [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command from the client.
+* Upon receiving this command, you MUST immediately call 'trigger_grading_window'.
+* After calling 'trigger_grading_window', analyze the video frames and call a grading tool.
+* Authorized tools: 'mark_sign_correct', 'mark_sign_incorrect', 'mark_sentence_flow'.
+* FORBIDDEN in this phase: 'user_is_resting_or_calibrating', 'trigger_action_window'.`
               }]
             },
             tools: [
@@ -83,31 +94,49 @@ You MUST strictly adhere to the following phase constraints to keep the UI synch
                 functionDeclarations: [
                   {
                     name: "trigger_action_window",
-                    description: "Transitions to Phase 2. Call ONLY when the user verbally says 'Ready' for the CURRENT word. Do NOT call this immediately after loading a word.",
+                    description: "PHASE 1 ONLY. Call this when the human says 'Ready' or 'Let's Go' to transition to Phase 2 (Observation). Do NOT call this at any other time.",
                   },
                   {
                     name: "show_sign_reference",
-                    description: "AVAILABLE IN PHASE 1. Shows a video of a human performing the CURRENT target sign. Call this if the user asks for help or wants to see a video.",
+                    description: "PHASE 1 ONLY. Shows a reference video for the current target sign. Call this if the user asks to see how it's done or requests help.",
                   },
                   {
                     name: "user_is_resting_or_calibrating",
-                    description: "PHASE 2 ONLY. Call this tool continuously while you watch the 5 FPS video feed. You must remain in this state until you read the exact word 'Done' or 'Finished' in the audio transcript from the user.",
+                    description: "PHASE 2 ONLY. Call this continuously in a loop while watching the video stream. Do not call any other tool while in Phase 2. The client system will send you a special override command in the response when the human signals completion.",
+                  },
+                  {
+                    name: "trigger_grading_window",
+                    description: "PHASE 2 to PHASE 3 TRANSITION. Call this ONLY when you receive the [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command from the client in a tool response. Do NOT call this on your own initiative.",
                   },
                   {
                     name: "mark_sign_correct",
-                    description: `PHASE 2 ONLY (Single Word). DO NOT CALL THIS unless you read the word 'Done' in the transcript. Once the user says 'Done', evaluate the physical sequence you just observed. If the motion perfectly matched: '${targetLessonWord.description}', call this tool.`,
+                    description: "PHASE 3 ONLY (Single Word). Call this ONLY in Phase 3 after analyzing video frames, if the human perfectly executed the required physical mechanics of the target sign.",
                   },
                   {
                     name: "mark_sign_incorrect",
-                    description: "PHASE 2 ONLY (Single Word). DO NOT CALL THIS unless you read the word 'Done' or 'Help' in the transcript. Once the user says 'Done', evaluate the sequence you just observed. Call this tool if they failed to match the required mechanics, or if they explicitly asked for help.",
+                    description: "PHASE 3 ONLY (Single Word). Call this ONLY in Phase 3 after analyzing video frames, if the human failed the sign. Provide the specific physical reason.",
+                    parameters: {
+                      type: "OBJECT",
+                      properties: {
+                        reason_category: {
+                          type: "STRING",
+                          description: "Must be one of: 'NO_MOVEMENT', 'WRONG_SIGN', 'POOR_FORM', or 'REQUESTED_HELP'"
+                        },
+                        specific_feedback: {
+                          type: "STRING",
+                          description: "A short, specific sentence explaining exactly what they did wrong physically and how to fix it."
+                        }
+                      },
+                      required: ["reason_category", "specific_feedback"]
+                    }
                   },
                   {
                     name: "finish_lesson",
-                    description: "Triggers the final victory screen. Call this ONLY when you receive the exact system message: 'System: All words in the lesson have been completed!'. DO NOT call this tool during the Boss Stage.",
+                    description: "SYSTEM ONLY. Call this ONLY when you receive the exact system message: 'System: All words in the lesson have been completed!'. DO NOT call this tool during the Boss Stage or on your own initiative.",
                   },
                   {
                     name: "mark_sentence_flow",
-                    description: "PHASE 2 ONLY (Boss Stage). Call this ONLY after the user verbally says 'Done' or 'Finished'. CRITICAL CONSTRAINTS: If the user did nothing, sat still, or missed most words, give 1 star.",
+                    description: "PHASE 3 ONLY (Boss Stage). Call this ONLY in Phase 3 after analyzing video frames for the full sentence signing performance.",
                     parameters: {
                       type: "OBJECT",
                       properties: {
@@ -361,24 +390,102 @@ End transmission. Wait for Audio Input.`;
                     continue; 
                 }
               } else if (call.name === 'user_is_resting_or_calibrating') {
-                logger.info("⏳ [Gemini Engine] user_is_resting_or_calibrating triggered. Ignoring resting frames.");
+                const store = useLessonStore.getState();
+
+                if (store.hasUserSignaledDone) {
+                  // === TROJAN HORSE: Phase 2 -> Phase 3 Transition ===
+                  // The frontend heard "Done" and set the flag. Now we hijack the next
+                  // resting tool response to command Gemini to switch to Phase 3.
+                  logger.info("🎯 [Trojan Horse] Done signal was set. Injecting Phase 3 override into resting tool response.");
+                  responses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: `[SYSTEM OVERRIDE: DONE SIGNAL RECEIVED]
+The human has explicitly said "Done". Observation Mode is now over.
+
+Your immediate next action: Call the 'trigger_grading_window' tool RIGHT NOW.
+Do not speak. Do not evaluate yet. Just call the tool immediately.` }
+                  });
+                } else {
+                  // === STANDARD PHASE 2 LOOP ===
+                  logger.info("⏳ [Gemini Engine] user_is_resting_or_calibrating triggered. Watching frames.");
+                  responses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: "Acknowledged. Continue watching the video stream. Do not grade yet. Wait for the client override command." }
+                  });
+                }
+
+              } else if (call.name === 'trigger_grading_window') {
+                // === PHASE 3 ACTIVATION ===
+                // Gemini called this tool in response to our Trojan Horse override.
+                // Now we give it the full evaluation brief with the sign description.
+                const store = useLessonStore.getState();
+                const activeWordObj = store.lessonPath[store.currentStepIndex];
+                const activeWord = activeWordObj ? activeWordObj.word : 'unknown';
+                const activeDescription = activeWordObj ? activeWordObj.description : 'Analyze the physical motion strictly.';
+
+                logger.info("🔬 [Gemini Engine] trigger_grading_window triggered. Activating Phase 3 evaluation.");
+
+                let phase3Prompt = '';
+                if (store.isBossStage) {
+                  const fullSentence = store.lessonPath.map(w => w.word).join(', ');
+                  phase3Prompt = `[SYSTEM OVERRIDE: PHASE 3 ACTIVE — EVALUATION MODE]
+Target Sentence: '${fullSentence}'
+You are now in Phase 3. Observation is over.
+Review the video frames from the last 3-5 seconds.
+You are now authorized to call 'mark_sentence_flow'.
+
+Grading criteria:
+- If they did not sign the sequence or sat still → score 1 (poor).
+- If they signed parts of the sentence but missed some → score 2 (good).
+- If they undeniably and perfectly signed the entire sentence → score 3 (perfect).
+- Your feedback must explain the exact physical reason for the score.`;
+                } else {
+                  phase3Prompt = `[SYSTEM OVERRIDE: PHASE 3 ACTIVE — EVALUATION MODE]
+Target Sign: '${activeWord}'
+Mechanics to evaluate: '${activeDescription}'
+You are now in Phase 3. Observation is over.
+Review the video frames from the last 3-5 seconds.
+You are now authorized to call 'mark_sign_correct' or 'mark_sign_incorrect'.
+
+Grading criteria:
+- If the user did not move or sat still → call 'mark_sign_incorrect' with reason_category 'NO_MOVEMENT'.
+- If they signed a completely different sign → call 'mark_sign_incorrect' with reason_category 'WRONG_SIGN'.
+- If their form was partially wrong (wrong hand shape, location, or movement) → call 'mark_sign_incorrect' with reason_category 'POOR_FORM'.
+- ONLY if the video undeniably proves they executed the exact mechanics → call 'mark_sign_correct'.`;
+                }
+
                 responses.push({
-                   id: call.id,
-                   name: call.name,
-                   response: { result: "Acknowledged. Keep watching the video stream for the target sign." }
+                  id: call.id,
+                  name: call.name,
+                  response: { result: phase3Prompt }
                 });
-                // We do NOT break or continue out of the main loop loop here, 
-                // the response will get batched and sent at the end of the tool loop.
+
               } else if (call.name === 'mark_sign_incorrect') {
                 const store = useLessonStore.getState();
+
+                // === SAFETY SHIELD: Block if user hasn't signaled done ===
+                // This is a last-resort guard in case Gemini ignores the phase rules.
+                if (!store.hasUserSignaledDone) {
+                  logger.warn(`🚫 [Event Lockout] Gemini attempted to mark_sign_incorrect before user said "Done"! Blocking.`);
+                  responses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: `[SYSTEM ERROR] CRITICAL PROTOCOL VIOLATION. You called a grading tool in Phase 2. This is FORBIDDEN. Return to Phase 2 immediately. Call 'user_is_resting_or_calibrating' and wait for the client override command.` }
+                  });
+                  continue;
+                }
 
                 logger.warn("❌ [Gemini Engine] mark_sign_incorrect triggered!");
                 
                 const userStore = useUserStore.getState();
+                const args = call.args as { reason_category: string, specific_feedback: string };
+                const feedbackText = args.specific_feedback || "Not quite right, let's try again.";
                 
                 store.setMascotEmotion('error');
                 store.resetCombo();
-                store.setFeedback("Not quite right, let's try again.", "error");
+                store.setFeedback(feedbackText, "error");
                 
                 const currentWordObj = store.lessonPath[store.currentStepIndex];
                 const currentWord = currentWordObj ? currentWordObj.word : 'unknown';
@@ -392,31 +499,28 @@ End transmission. Wait for Audio Input.`;
                    useLessonStore.getState().setFeedback("", "idle");
                 }, 2000);
 
-                // CRITICAL FIX: The UI must reset to Phase 1 (Waiting for Ready) on FAILURE as well.
-                // If we don't unset practice mode here, the camera stays at 15fps and Gemini continues 
-                // to rapid-fire grade the user's resting hands before they can even process the feedback!
+                // Reset to Phase 1: stop practice mode, reset the done flag
                 store.setPracticeModeActive(false);
+                store.setHasUserSignaledDone(false);
 
                 responses.push({
                    id: call.id,
                    name: call.name,
-                   response: { result: `
-[SYSTEM OVERRIDE: TOOL EXECUTION SUCCESSFUL]
-The user failed the sign for the target word: '${currentWord}'.
+                   response: { result: `[SYSTEM OVERRIDE: EVALUATION COMPLETE — PHASE 1 RESTORED]
+Target Word: '${currentWord}'
+Result: FAILED
 
 Your Immediate Objective:
-1. Verbally state: "That is not the sign for ${currentWord}." or similar.
-2. Provide a constructive tip on how to fix their hand shape or movement specifically for '${currentWord}'.
-3. CRITICAL: DO NOT mention any other signs they may have accidentally performed. Only talk about '${currentWord}'.
-4. Tell them they can say "Show me" to watch the reference video, or "Ready" to try '${currentWord}' again.
-5. Enter Phase 1 (Standby) and wait.
+1. Verbally explain the failure: "That was not the sign for '${currentWord}'."
+2. Give specific guidance based on the exact mechanics they got wrong.
+3. DO NOT mention any other sign they may have accidentally performed. Only focus on '${currentWord}'.
+4. Tell them they can say "Show me" to watch the reference video, or "Ready" to try again.
 
-# CRITICAL PHASE 1 RULES:
-* DO NOT advance the curriculum. 
-* DO NOT call trigger_action_window.
-* DO NOT evaluate my resting hands.
-* You must wait for the human to verbally say "Ready" before calling the timer again.
-` }
+PHASE 1 RULES NOW ACTIVE:
+- You may NOT call any grading tool.
+- You may NOT call 'user_is_resting_or_calibrating' or 'trigger_grading_window'.
+- ONLY call 'trigger_action_window' when the user says "Ready".
+Wait silently for user input.` }
                 });
                 
               } else if (call.name === 'show_sign_reference') {
@@ -460,7 +564,6 @@ Objective:
 [CRITICAL EXECUTION SHIELD]
 You are in Phase 1. DO NOT call mark_sign_correct or mark_sign_incorrect.
 When the user says "Ready", call trigger_action_window.
-Then execute FAST UX: grade IMMEDIATELY on gesture detection. DO NOT wait for "Done".
 End transmission. Wait for Audio Input.
 ` 
                        }
@@ -484,47 +587,26 @@ End transmission. Wait for Audio Input.
                 let actionMessage = '';
                 if (state.isBossStage) {
                     const fullSentence = state.lessonPath.map(w => w.word).join(', ');
-                    actionMessage = `
-[SYSTEM: EVALUATION STARTED]
-Target Sequence: '${fullSentence}'
-Video Feedback: ACTIVE (5 FPS).
+                    actionMessage = `[SYSTEM OVERRIDE: PHASE 2 ACTIVE]
+Target Sentence: '${fullSentence}'
+Video Feedback: ACTIVE at 5 FPS.
 
-You are now the active Grader. You must observe the video stream silently and transition through the following states:
-
-## STATE 1: WAITING FOR THE TRIGGER
-The user has just triggered the window. They may be adjusting their hands or practicing.
-* RULE: Call 'user_is_resting_or_calibrating' while you wait. Make this your default action.
-* WAIT FOR VERBAL 'DONE': You MUST execute the resting tool continuously and wait until the user explicitly verbally says "done" or "finished" before grading.
-
-## STATE 2: GRADING (THE INTERROGATION)
-Once the user says "done", analyze the entire sequence of frames you observed prior to the trigger.
-* ASSUMPTION OF FAILURE: You MUST assume the user failed the sequence. Do not give them the benefit of the doubt.
-* BURDEN OF PROOF: You may ONLY call 'mark_sentence_flow' if the physical frames undeniably and perfectly prove they signed the entire sentence.
-* THE PENALTY: If the frames show them sitting still, missing signs, or executing poor mechanics when they said "done", you MUST call 'mark_sign_incorrect'.
-`;
+You are now in Phase 2 — OBSERVATION MODE.
+Your ONLY authorized tool is 'user_is_resting_or_calibrating'. Loop it continuously.
+DO NOT listen for any verbal cues. DO NOT attempt to grade anything.
+The client system will send you an override command in the tool response when the user signals they are done.
+Wait for that override command. Do not guess. Do not act early.`;
                 } else {
-                    actionMessage = `
-[SYSTEM: EVALUATION STARTED]
+                    actionMessage = `[SYSTEM OVERRIDE: PHASE 2 ACTIVE]
 Target Sign: '${activeWord}'
-Video Feedback: ACTIVE (5 FPS).
+Mechanics to observe for: '${activeDescription}'
+Video Feedback: ACTIVE at 5 FPS.
 
-You are now the active Grader. You must observe the video stream silently and transition through the following states in order:
-
-## STATE 1: WAITING FOR THE TRIGGER
-The user has just triggered the window. They may be adjusting their hands, practicing varying speeds, or resting.
-* RULE: You MUST call 'user_is_resting_or_calibrating' continuously while you watch. 
-* WAIT FOR VERBAL 'DONE': You are STRICTLY FORBIDDEN from grading until the user explicitly says "done", "finished", or "help" in the transcript.
-
-## STATE 2: EVALUATION (Waiting for the Trigger)
-## STATE 2: GRADING (THE INTERROGATION)
-Once you observe the audio trigger "Done", evaluate the physical frames you recorded just prior to the trigger.
-* ASSUMPTION OF FAILURE: You MUST assume the user failed the sign. Do not give them the benefit of the doubt.
-* ACCEPTANCE CRITERIA: ${activeDescription}
-* BURDEN OF PROOF: You may ONLY call 'mark_sign_correct' if the physical frames undeniably and perfectly prove they completed the Acceptance Criteria.
-* THE PENALTY: If the frames show them sitting still, hesitating, or executing incorrect mechanics when they said "Done", you MUST call 'mark_sign_incorrect'.
-
-End of Rules. Begin observation.
-`;
+You are now in Phase 2 — OBSERVATION MODE.
+Your ONLY authorized tool is 'user_is_resting_or_calibrating'. Loop it continuously.
+DO NOT listen for any verbal cues. DO NOT attempt to grade anything.
+The client system will send you an override command in the tool response when the user signals they are done.
+Wait for that override command. Do not guess. Do not act early.`;
                 }
 
                 responses.push({
