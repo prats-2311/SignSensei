@@ -22,9 +22,19 @@ export function useGeminiLive() {
   const wsRef = useRef<WebSocket | null>(null);
   const connectionTimestampRef = useRef<number>(0);
   const audioCallbackRef = useRef<((base64Audio: string) => void) | undefined>(undefined);
+  // FIX (Bug 3): Guards against duplicate trigger_grading_window calls from LLM output batching.
+  // A useRef is used (not Zustand) because it must update synchronously to block the second call
+  // that arrives within ~500ms of the first.
+  const isGradingWindowActiveRef = useRef<boolean>(false);
   
   const connect = useCallback(async (onAudioData?: (base64Audio: string) => void) => {
     if (onAudioData) audioCallbackRef.current = onAudioData;
+    // FIX (Bug 1): Reset gating flags at the start of every new connection.
+    // Without this, hasUserSignaledDone stays 'true' from the previous word's "Done" signal,
+    // causing the Trojan Horse to fire immediately on the first user_is_resting_or_calibrating
+    // call of the new session — before the user has signed anything.
+    useLessonStore.getState().setHasUserSignaledDone(false);
+    isGradingWindowActiveRef.current = false;
     setIsConnecting(true);
     setError(null);
     try {
@@ -327,10 +337,15 @@ End transmission. Wait for Audio Input.`;
                 store.setMascotEmotion('success');
                 store.setFeedback("Excellent signing!", "success");
                 userStore.incrementXP(10);
+
+                // FIX (Bug 1): Reset hasUserSignaledDone BEFORE the Optimistic Disconnect.
+                // If not reset here, the new connection's connect() picks up stale 'true',
+                // causing the Trojan Horse to fire immediately on the first resting call.
+                store.setHasUserSignaledDone(false);
+                // FIX (Bug 3): Reset the grading window guard for the next word.
+                isGradingWindowActiveRef.current = false;
                 
                 // CRITICAL FIX: The UI must reset to Phase 1 (Waiting for Ready).
-                // If we don't unset practice mode here, it stays in Phase 2 (Recording) for the NEXT word,
-                // and Gemini instantly grades the new word as incorrect before the human even hits Ready!
                 store.setPracticeModeActive(false);
                 
                 store.advanceStep();
@@ -417,10 +432,36 @@ Do not speak. Do not evaluate yet. Just call the tool immediately.` }
                 }
 
               } else if (call.name === 'trigger_grading_window') {
-                // === PHASE 3 ACTIVATION ===
-                // Gemini called this tool in response to our Trojan Horse override.
-                // Now we give it the full evaluation brief with the sign description.
                 const store = useLessonStore.getState();
+
+                // FIX (Bug 2): Guard against hallucinated trigger_grading_window calls.
+                // Gemini may call this tool spontaneously due to context contamination from a
+                // previous Trojan Horse override. Reject it hard if the user hasn't said "Done".
+                if (!store.hasUserSignaledDone) {
+                  logger.warn(`🚫 [Phase Guard] trigger_grading_window called without Done signal! Rejecting.`);
+                  responses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: `[SYSTEM ERROR] UNAUTHORIZED CALL. You called 'trigger_grading_window' without receiving the [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command. This call is REJECTED. Return to Phase 2 immediately. Call 'user_is_resting_or_calibrating' and wait for the client override command.` }
+                  });
+                  continue;
+                }
+
+                // FIX (Bug 3): Guard against duplicate trigger_grading_window calls.
+                // Gemini's output stream can produce two calls within ~500ms. Only the first
+                // should trigger Phase 3. The ref updates synchronously to block the second call.
+                if (isGradingWindowActiveRef.current) {
+                  logger.warn(`🚫 [Duplicate Guard] Second trigger_grading_window received. Ignoring duplicate.`);
+                  responses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: `[SYSTEM INFO] Phase 3 is already active. This is a duplicate call. Ignore it and wait for the evaluation result.` }
+                  });
+                  continue;
+                }
+
+                // === PHASE 3 ACTIVATION ===
+                isGradingWindowActiveRef.current = true;
                 const activeWordObj = store.lessonPath[store.currentStepIndex];
                 const activeWord = activeWordObj ? activeWordObj.word : 'unknown';
                 const activeDescription = activeWordObj ? activeWordObj.description : 'Analyze the physical motion strictly.';
@@ -499,28 +540,39 @@ Grading criteria:
                    useLessonStore.getState().setFeedback("", "idle");
                 }, 2000);
 
-                // Reset to Phase 1: stop practice mode, reset the done flag
+                // Reset to Phase 1: stop practice mode, reset all gating flags.
                 store.setPracticeModeActive(false);
                 store.setHasUserSignaledDone(false);
+                // FIX (Bug 3): Reset grading window guard so it works on next attempt.
+                isGradingWindowActiveRef.current = false;
 
+                // FIX (Bug 2): Aggressive Mind Wipe response.
+                // Explicitly cancels the Trojan Horse override command that is still in Gemini's
+                // context from the failed attempt. Without this, Gemini replays the
+                // 'trigger_grading_window' call on the very next Phase 2 loop.
                 responses.push({
                    id: call.id,
                    name: call.name,
-                   response: { result: `[SYSTEM OVERRIDE: EVALUATION COMPLETE — PHASE 1 RESTORED]
-Target Word: '${currentWord}'
+                   response: { result: `[SYSTEM OVERRIDE: FULL CONTEXT RESET — PHASE 1 RESTORED]
+ALL prior Phase 2 and Phase 3 instructions are now VOID and CANCELLED.
+The command to call 'trigger_grading_window' is CANCELLED.
+The Phase 3 evaluation prompt is CANCELLED.
+You are REBOOTING to Phase 1 — STANDBY.
+
+Target Word: '${currentWord}' (UNCHANGED. Do NOT advance.)
 Result: FAILED
 
 Your Immediate Objective:
-1. Verbally explain the failure: "That was not the sign for '${currentWord}'."
-2. Give specific guidance based on the exact mechanics they got wrong.
-3. DO NOT mention any other sign they may have accidentally performed. Only focus on '${currentWord}'.
-4. Tell them they can say "Show me" to watch the reference video, or "Ready" to try again.
+1. Say "That was not the sign for '${currentWord}'."
+2. Give specific guidance on the exact mechanics they got wrong.
+3. Tell them: "Say 'Show me' to see a demo, or 'Ready' to try again."
 
-PHASE 1 RULES NOW ACTIVE:
+PHASE 1 RULES — STRICTLY ENFORCED:
+- You may NOT call 'trigger_grading_window'.
+- You may NOT call 'user_is_resting_or_calibrating'.
 - You may NOT call any grading tool.
-- You may NOT call 'user_is_resting_or_calibrating' or 'trigger_grading_window'.
-- ONLY call 'trigger_action_window' when the user says "Ready".
-Wait silently for user input.` }
+- The ONLY tool you may call is 'trigger_action_window', ONLY when user says "Ready".
+Wait silently.` }
                 });
                 
               } else if (call.name === 'show_sign_reference') {
@@ -654,9 +706,11 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. YOU MUST WAIT FOR THE USER TO COMPLETE THE B
                    response: { result: "ok" }
                 });
               } else if (call.name === 'mark_sentence_flow') {
-                logger.info("🌟 [Gemini Engine] mark_sentence_flow triggered! Boss Stage Complete.");
-
                 const store = useLessonStore.getState();
+                // FIX (Bug 3): Reset grading window guard after Boss Stage grade.
+                isGradingWindowActiveRef.current = false;
+                store.setHasUserSignaledDone(false);
+                logger.info("🌟 [Gemini Engine] mark_sentence_flow triggered! Boss Stage Complete.");
 
                 if (!store.hasUserSignaledDone) {
                     logger.warn(`🚫 [Event Lockout] Gemini attempted to grade Boss Stage before user said "Done"! Blocking.`);
