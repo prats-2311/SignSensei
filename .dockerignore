@@ -1,0 +1,14 @@
+# Root Dockerignore for SignSensei
+# Prevents massive frontend/venv folders from slowing down backend builds
+
+frontend/
+docs/
+backend/venv/
+backend/__pycache__/
+.git/
+.github/
+.gitlab/
+*.pdf
+docs_extracted.txt
+CURRENT_PROGRESS.md
+README.md
