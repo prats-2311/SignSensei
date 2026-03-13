@@ -3,7 +3,7 @@ uvicorn==0.29.0
 google-auth==2.29.0
 google-cloud-aiplatform==1.44.0
 python-dotenv==1.0.1
-websockets==12.0
+websockets>=13.0, <15.0dev
 httpx==0.28.1
 beautifulsoup4==4.14.3
 google-genai==0.3.0
