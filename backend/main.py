@@ -6,6 +6,10 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 from fastapi import Request
 import httpx
 from bs4 import BeautifulSoup
+from pydantic import BaseModel, Field
+from typing import List
+from google import genai
+from google.genai import types
 
 app = FastAPI(title="SignSensei Token Service")
 
@@ -33,6 +37,69 @@ async def receive_client_log(request: Request):
     # 96m is Cyan to stand out in the terminal logs    
     print(f"\033[96m{msg}\033[0m")
     return {"status": "Logged"}
+
+# --- GENERATIVE EXERCISE ARCHITECTURE ---
+class GenerateLessonRequest(BaseModel):
+    prompt: str = Field(..., description="The user's desired practice sentence, e.g., 'going for coffee'")
+
+class LessonWord(BaseModel):
+    word: str
+    description: str
+
+class GenerateLessonResponse(BaseModel):
+    lessonId: str
+    title: str
+    description: str
+    path: List[LessonWord]
+    bossStageSentence: str
+
+@app.post("/api/generate-lesson", response_model=GenerateLessonResponse)
+async def generate_dynamic_lesson(req: GenerateLessonRequest):
+    """
+    Uses Gemini 2.5 Flash to generate a complete custom ASL lesson based
+    on a natural language prompt from the user.
+    """
+    try:
+        # Re-use the existing google.auth library to get the project ID dynamically
+        credentials, project = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        
+        # Initialize GenAI Client explicitly pointing to the Vertex backend
+        client = genai.Client(
+            vertexai=True,
+            project=project,
+            location="us-central1"
+        )
+        
+        system_instruction = '''
+        You are an expert American Sign Language (ASL) curriculum designer.
+        The user wants to practice a specific phrase. 
+        1. Break the phrase down into the core ASL vocabulary words needed. Ignore English fluff words that aren't typically signed (e.g., 'a', 'the', 'is' depending on context).
+        2. For each core word, provide a highly specific, physical description of how to execute the gesture. Include starting hand shape, movement path, and ending position.
+        3. Create a title and a short encouraging description for the lesson.
+        4. Create a unique, URL-safe lessonId (e.g., 'custom_coffee_shop').
+        5. Provide the 'bossStageSentence', which is just the core words separated by spaces.
+        '''
+        
+        response = await client.aio.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=req.prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json",
+                response_schema=GenerateLessonResponse,
+                temperature=0.2 # Keep it deterministic and factual
+            ),
+        )
+        
+        import json
+        result_dict = json.loads(response.text)
+        return result_dict
+        
+    except Exception as e:
+        print(f"Error generating dynamic lesson: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate lesson via Gemini API")
 
 # Simple in-memory cache to prevent spamming signasl.org during a session
 # In production, use Redis or Memcached

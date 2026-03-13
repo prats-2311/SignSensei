@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
-import { Coins, Flame, Trophy, Lock, Star } from 'lucide-react';
+import { Coins, Flame, Trophy, Lock, Star, Sparkles, Loader2 } from 'lucide-react';
 import { useUserStore } from './stores/useUserStore';
 import { useLessonStore } from './stores/useLessonStore';
 import { ProgressBar } from './shared/ui/ProgressBar';
@@ -21,11 +21,38 @@ function MapScreen() {
   const { initializeLesson } = useLessonStore();
   const { xp, unlockedLessonIds, lessonScores } = useUserStore();
   const [selectedLesson, setSelectedLesson] = useState<LessonData | null>(null);
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
   const currentLevelProgress = xp % 100;
 
   const handleStartLesson = (lesson: LessonData) => {
       initializeLesson(lesson.id, lesson.path);
       navigate(`/lesson/${lesson.id}`);
+  };
+
+  const handleGenerateLesson = async () => {
+      if (!customPrompt.trim()) return;
+      
+      setIsGenerating(true);
+      try {
+          const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+          const res = await fetch(`${baseUrl}/api/generate-lesson`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: customPrompt })
+          });
+          
+          if (!res.ok) throw new Error("Failed to generate lesson");
+          
+          const lessonData = await res.json();
+          initializeLesson(lessonData.lessonId, lessonData.path);
+          navigate(`/lesson/${lessonData.lessonId}`);
+      } catch (err) {
+          console.error("Error generating lesson:", err);
+          alert("Failed to generate AI lesson. Please try again.");
+      } finally {
+          setIsGenerating(false);
+      }
   };
 
   return (
@@ -48,7 +75,28 @@ function MapScreen() {
         </div>
       </Card>
 
-      <div className="py-12 relative z-20 flex flex-col items-center">
+      <div className="px-6 py-4 w-full flex justify-center relative z-20">
+        <div className="bg-card/40 backdrop-blur-xl border border-white/20 p-4 rounded-3xl w-full max-w-sm flex items-center shadow-[0_8px_30px_rgba(0,0,0,0.3)]">
+          <input 
+            type="text"
+            placeholder="I want to learn..."
+            value={customPrompt}
+            onChange={(e) => setCustomPrompt(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleGenerateLesson()}
+            className="flex-1 bg-transparent border-none text-white placeholder-white/50 focus:ring-0 outline-none px-2"
+            disabled={isGenerating}
+          />
+          <Button 
+            onClick={handleGenerateLesson} 
+            disabled={!customPrompt.trim() || isGenerating}
+            className="rounded-full w-10 h-10 p-0 shadow-lg shadow-primary/30 ml-2"
+          >
+            {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5 text-white" />}
+          </Button>
+        </div>
+      </div>
+
+      <div className="py-8 relative z-20 flex flex-col items-center">
         {LESSONS.map((lesson, index) => {
           const isSelected = selectedLesson?.id === lesson.id;
           const isUnlocked = unlockedLessonIds.includes(lesson.id);
@@ -108,9 +156,9 @@ function MapScreen() {
                      <p className="text-sm text-gray-400 mb-4">{lesson.description}</p>
                      
                      <div className="flex flex-wrap gap-2 mb-5">
-                       {lesson.path.map(word => (
-                          <span key={word} className="text-[10px] font-bold uppercase tracking-wider bg-white/10 text-white/80 px-2 py-1 rounded">
-                             {word}
+                       {lesson.path.map((lessonWord, idx) => (
+                          <span key={idx} className="text-[10px] font-bold uppercase tracking-wider bg-white/10 text-white/80 px-2 py-1 rounded">
+                             {lessonWord.word}
                           </span>
                        ))}
                      </div>

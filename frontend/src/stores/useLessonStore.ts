@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { LessonWord } from '../data/curriculum';
 
 interface LessonState {
   combo: number;
@@ -17,12 +18,12 @@ interface LessonState {
 
   // Path Tracking Architecture
   activeLessonId: string | null;
-  lessonPath: string[];
+  lessonPath: LessonWord[];
   currentStepIndex: number;
   isAiPaused: boolean;
   
   // Actions
-  initializeLesson: (lessonId: string, path: string[]) => void;
+  initializeLesson: (lessonId: string, path: LessonWord[]) => void;
   setAiPaused: (paused: boolean) => void;
   setPracticeModeActive: (active: boolean) => void;
   setHasUserSignaledDone: (signaled: boolean) => void;

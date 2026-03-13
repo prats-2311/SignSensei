@@ -11,32 +11,23 @@ const videoCapture = new VideoCapture();
 export function LiveSession({ onEnd }: { onEnd: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isActive, setIsActive] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
   const { isConnected, isConnecting, error, connect, disconnect, sendAudioData, sendVideoData } = useGeminiLive();
   const { lessonPath, currentStepIndex, isPracticeModeActive, setPracticeModeActive, isBossStage, finalScore, feedback, isLessonComplete } = useLessonStore();
 
   const handleStart = async () => {
     try {
-      // Initialize Audio playback explicitly during user iteration to satisfy browser policy
       audioManager.initializePlaybackContext();
-      
-      // Setup audio to send to Gemini
       await audioManager.startRecording((base64Audio) => {
         sendAudioData(base64Audio);
       });
-      
-      // Start camera at 1 FPS (Low Bandwidth Wait Mode)
       if (videoRef.current) {
          await videoCapture.startCamera(videoRef.current, (base64Video) => {
             sendVideoData(base64Video);
-         }, 1);
+         }, 0);
       }
-
-      // Connect and provide playback callback for incoming audio
       await connect((base64Playback) => {
          audioManager.playChunk(base64Playback);
       });
-
       setIsActive(true);
     } catch (e) {
       console.error(e);
@@ -57,22 +48,50 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
      if (!isActive) return;
      
      if (isPracticeModeActive) {
-         // Switch to 15 FPS for high-fidelity evaluation
-         videoCapture.changeFramerate(15, (base64Video) => {
+         // Activate 5 FPS immediately in Phase 2
+         videoCapture.changeFramerate(5, (base64Video) => {
              sendVideoData(base64Video);
          });
      } else {
-         // Drop back down to 1 FPS to save tokens
-         videoCapture.changeFramerate(1, (base64Video) => {
+         // Phase 1 (Standby): Send 0 frames to save bandwidth and prevent hallucinations.
+         videoCapture.changeFramerate(0, (base64Video) => {
              sendVideoData(base64Video);
          });
      }
-  }, [isActive, isPracticeModeActive, sendVideoData]);
+  }, [isPracticeModeActive, isActive, sendVideoData]);
 
+  const practiceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Trigger native model-driven recording phase immediately with a HARD timeout
   const startPracticeMode = useCallback(() => {
-      setCountdown(null);
       setPracticeModeActive(true);
-  }, [setPracticeModeActive]);
+      
+      // Clear any existing timeouts just in case
+      if (practiceTimeoutRef.current) {
+         clearTimeout(practiceTimeoutRef.current);
+      }
+      
+      // EDGE CASE 1 (The "Frozen/Walkaway" User):
+      // If the user triggers the camera but then walks away or stares blankly for 15 seconds,
+      // we forcefully kill the connection to save Vertex AI tokens.
+      practiceTimeoutRef.current = setTimeout(() => {
+         // Only cull if they are still stuck in practice mode
+         if (useLessonStore.getState().isPracticeModeActive) {
+             console.warn("⏳ [FRONTEND CULL] Active recording window exceeded 15s. Force disconnecting to save tokens.");
+             disconnect();
+             useLessonStore.getState().setPracticeModeActive(false);
+             useLessonStore.getState().setFeedback("Recording timed out. Please say 'Ready' to try again.", "error");
+             useLessonStore.getState().setMascotEmotion('error');
+             
+             // Reset UI after 3 seconds
+             setTimeout(() => {
+                 useLessonStore.getState().resetStatusToIdle();
+                 useLessonStore.getState().setFeedback("", "idle");
+             }, 3000);
+         }
+      }, 15000); // 15 seconds max recording time
+      
+  }, [setPracticeModeActive, disconnect]);
   
   // Listen for the AI triggering the action window
   useEffect(() => {
@@ -85,11 +104,18 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
          window.removeEventListener('start-practice-mode', handleStartPracticeEvent);
      };
   }, [startPracticeMode]);
-  
+
   const endPracticeMode = () => {
      // User manually signals they are done. Gemini's VAD handles the audio "Done" version.
      // By dropping the framerate immediately, we stop Gemini from seeing the messy transition.
      setPracticeModeActive(false);
+     useLessonStore.getState().setHasUserSignaledDone(true);
+     
+     // Clear the hard timeout
+     if (practiceTimeoutRef.current) {
+        clearTimeout(practiceTimeoutRef.current);
+        practiceTimeoutRef.current = null;
+     }
      
      // Send ONE explicit empty voice ping to ensure the WebSocket flushes the frame buffer to Gemini immediately
      sendAudioData(""); 
@@ -100,6 +126,7 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
         audioManager.stopRecording();
         videoCapture.stopCamera();
         disconnect();
+        if (practiceTimeoutRef.current) clearTimeout(practiceTimeoutRef.current);
      }
   }, [disconnect]);
 
@@ -114,7 +141,8 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
           {/* Duolingo Style Tracker Stepper */}
           {isActive && (
             <div className="flex flex-wrap items-center justify-center py-2 gap-y-3 w-full max-w-sm mx-auto">
-              {lessonPath.map((word, index) => {
+              {lessonPath.map((lessonWord, index) => {
+                const word = lessonWord.word;
                 const isCompleted = index < currentStepIndex;
                 const isCurrent = index === currentStepIndex;
                 return (
@@ -151,17 +179,13 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
           {isActive && isConnected && !isLessonComplete && (
              <div className="py-4 h-[120px] flex items-center justify-center">
                 
-                {countdown !== null ? (
-                   <div className="text-6xl font-black text-primary animate-bounce">
-                      {countdown}
-                   </div>
-                ) : !isPracticeModeActive ? (
+                {!isPracticeModeActive ? (
                    <div className="flex flex-col items-center w-full">
                       {isBossStage && (
                          <div className="mb-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 w-full animate-in slide-in-from-bottom-2">
                              <h3 className="text-yellow-500 font-bold mb-1">👑 Final Challenge!</h3>
                              <p className="text-sm text-muted-foreground font-medium">Sign the full sentence fluidly:</p>
-                             <p className="text-lg font-black text-foreground capitalize italic mt-1 bg-background/50 py-1 rounded-md">{lessonPath.join(" ")}</p>
+                             <p className="text-lg font-black text-foreground capitalize italic mt-1 bg-background/50 py-1 rounded-md">{lessonPath.map(w => w.word).join(" ")}</p>
                          </div>
                       )}
                       <Button onClick={startPracticeMode} size="lg" className="w-full max-w-[200px] shadow-lg text-lg py-6" variant="primary">
