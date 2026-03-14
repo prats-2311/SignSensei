@@ -9,6 +9,8 @@ import { Badge } from './shared/ui/Badge';
 import { GlassCard } from './shared/ui/GlassCard';
 import { Input } from './shared/ui/Input';
 import { ToastController } from './shared/ui/Toast';
+import { Sidebar } from './shared/ui/Sidebar';
+import { RightRail } from './shared/ui/RightRail';
 import { AvatarCanvas } from './features/live-session/components/AvatarCanvas';
 import { LiveSession } from './features/live-session/components/LiveSession';
 import { AudioHapticController } from './shared/ui/AudioHapticController';
@@ -296,13 +298,13 @@ function AppContent() {
       {/* Global Cosmic Background — rendered once for all screens */}
       <CosmicBackground />
 
-      {/* Top Header */}
+      {/* Top Header — Mobile only (md: hidden because sidebar takes over) */}
       <header
-        className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 bg-black/30 backdrop-blur-xl border-b border-white/5"
+        className="md:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 bg-black/30 backdrop-blur-xl border-b border-white/5"
         style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top, 0px))', paddingBottom: '0.75rem' }}
         data-tour="header-stats"
       >
-        {/* Left: App name / level */}
+        {/* Left: level */}
         <div className="flex items-center gap-2">
           <Badge icon="⭐" value={`Lvl ${currentLevel}`} variant="xp" label={`Level ${currentLevel}`} />
         </div>
@@ -314,8 +316,24 @@ function AppContent() {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="pt-20 pb-28 px-0 max-w-lg mx-auto relative min-h-dvh flex flex-col">
+      {/* Sidebar — tablet & desktop */}
+      {!isLessonRoute && <Sidebar />}
+
+      {/* Right Rail — desktop only */}
+      {!isLessonRoute && <RightRail />}
+
+      {/* Main Content — shifts right for sidebar on md+, shifts left for right rail on xl+ */}
+      <main
+        className={`
+          pt-20 pb-28 md:pb-8
+          md:pt-8
+          ${isLessonRoute
+            ? 'px-4 max-w-2xl mx-auto'
+            : 'md:ml-56 lg:ml-64 xl:mr-72 px-0 md:px-6'
+          }
+          relative min-h-dvh flex flex-col
+        `}
+      >
         <Routes>
           <Route path="/" element={<MapScreen />} />
           <Route path="/decks" element={<DecksScreen />} />
@@ -323,10 +341,10 @@ function AppContent() {
         </Routes>
       </main>
 
-      {/* Bottom Navigation */}
+      {/* Bottom Navigation — mobile only */}
       {showBottomNav && (
         <nav
-          className="fixed bottom-0 left-0 right-0 bg-black/50 backdrop-blur-xl border-t border-white/8 flex justify-around items-center z-50 px-2"
+          className="md:hidden fixed bottom-0 left-0 right-0 bg-black/50 backdrop-blur-xl border-t border-white/8 flex justify-around items-center z-50 px-2"
           style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 0px))', paddingTop: '0.75rem' }}
           aria-label="Main navigation"
         >
