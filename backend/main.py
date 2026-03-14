@@ -117,7 +117,7 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
         full_system_instruction = f"{system_instruction}\n\nIMPORTANT: You must output valid JSON that strictly follows this schema:\n{schema_text}"
         
         response = await client.aio.models.generate_content(
-            model='gemini-1.5-flash', # Using proven stable model
+            model='gemini-3.1-flash-lite-preview', # Confirmed from Vertex AI Console
             contents=req.prompt,
             config={
                 "system_instruction": full_system_instruction,
