@@ -16,6 +16,10 @@ interface UserState {
   weakWords: Record<string, number>;
   lessonScores: Record<string, number>;
   
+  // Tour & UI State
+  hasCompletedTour: boolean;
+  lessonHistory: Array<{ lessonId: string; score: number; completedAt: string }>;
+  
   // Actions
   incrementXP: (amount: number) => void;
   incrementStreak: () => void;
@@ -25,6 +29,8 @@ interface UserState {
   setLessonScore: (lessonId: string, score: number) => void;
   setStoreFromFirestore: (data: Partial<UserState>) => void;
   updateLastPlayedDate: (dateStr: string) => void;
+  completeTour: () => void;
+  addLessonHistory: (lessonId: string, score: number) => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -34,9 +40,11 @@ export const useUserStore = create<UserState>()(
       streak: 1,
       gems: 50,
       lastPlayedDate: '',
-      unlockedLessonIds: ['the-basics'], // Start with the first module unlocked
+      unlockedLessonIds: ['the-basics'],
       weakWords: {},
       lessonScores: {},
+      hasCompletedTour: false,
+      lessonHistory: [],
       
       incrementXP: (amount) => set((state) => ({ xp: state.xp + amount })),
       incrementStreak: () => set((state) => ({ streak: state.streak + 1 })),
@@ -63,6 +71,13 @@ export const useUserStore = create<UserState>()(
 
       setStoreFromFirestore: (data) => set((state) => ({ ...state, ...data })),
       updateLastPlayedDate: (dateStr) => set({ lastPlayedDate: dateStr }),
+      completeTour: () => set({ hasCompletedTour: true }),
+      addLessonHistory: (lessonId, score) => set((state) => ({
+        lessonHistory: [
+          { lessonId, score, completedAt: new Date().toISOString() },
+          ...state.lessonHistory.slice(0, 49), // keep last 50
+        ]
+      })),
     }),
     {
       name: 'signsensei-user-storage',

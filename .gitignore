@@ -18,3 +18,9 @@ terraform.rc
 # AI Agent Context
 .agent/
 .agents/
+
+# Environment Variables
+.env
+.env.*
+.env.local
+!.env.example

@@ -9,7 +9,7 @@ interface LessonState {
   
   // New split architecture states
   referenceSign: string | null;
-  mascotEmotion: 'idle' | 'success' | 'error' | 'listening';
+  mascotEmotion: 'idle' | 'wave' | 'celebrate' | 'hopeful' | 'sad' | 'oops' | 'hyped' | 'thinking' | 'success' | 'error' | 'listening';
   isLessonComplete: boolean;
   isPracticeModeActive: boolean;
   isBossStage: boolean;
