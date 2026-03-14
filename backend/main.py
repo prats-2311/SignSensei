@@ -1,9 +1,14 @@
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request
 import google.auth
 from google.auth.transport.requests import Request as GoogleAuthRequest
-from fastapi import Request
 import httpx
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field

@@ -1,84 +1,83 @@
 @import "tailwindcss";
 
+/* ============================================================
+   SignSensei — Dark Cosmic Design System
+   Single theme (dark only). No solarized, no light mode.
+   ============================================================ */
+
 @layer base {
   :root {
-    --card: #eee8d5;
-    --ring: #d33682;
-    --input: #839496;
-    --muted: #93a1a1;
-    --accent: #cb4b16;
-    --border: #839496;
-    --radius: 0.25rem;
-    --chart-1: #268bd2;
-    --chart-2: #2aa198;
-    --chart-3: #d33682;
-    --chart-4: #cb4b16;
-    --chart-5: #dc322f;
-    --popover: #eee8d5;
-    --primary: #d33682;
-    --sidebar: #fdf6e3;
-    --font-mono: Space Mono, monospace;
-    --font-sans: Outfit, sans-serif;
-    --secondary: #2aa198;
-    --background: #fdf6e3;
-    --foreground: #073642;
-    --destructive: #dc322f;
-    --shadow-blur: 4px;
-    --shadow-color: hsl(196 83% 10%);
-    --sidebar-ring: #d33682;
-    --shadow-spread: 0px;
-    --shadow-opacity: 0.15;
-    --sidebar-accent: #2aa198;
-    --sidebar-border: #839496;
-    --card-foreground: #073642;
-    --shadow-offset-x: 2px;
-    --shadow-offset-y: 2px;
-    --sidebar-primary: #d33682;
-    --muted-foreground: #073642;
-    --accent-foreground: #ffffff;
-    --popover-foreground: #073642;
-    --primary-foreground: #ffffff;
-    --sidebar-foreground: #073642;
-    --secondary-foreground: #ffffff;
-    --destructive-foreground: #ffffff;
-    --sidebar-accent-foreground: #ffffff;
-    --sidebar-primary-foreground: #ffffff;
-  }
+    /* === Backgrounds === */
+    --background: #0A0A0F;
+    --background-elevated: #12111a;
 
-  .dark {
-    --card: #073642;
-    --ring: #d33682;
-    --input: #586e75;
-    --muted: #586e75;
-    --accent: #cb4b16;
-    --border: #586e75;
-    --radius: 0.25rem;
-    --chart-1: #268bd2;
-    --chart-2: #2aa198;
-    --chart-3: #d33682;
-    --chart-4: #cb4b16;
-    --chart-5: #dc322f;
-    --popover: #073642;
-    --primary: #d33682;
-    --sidebar: #002b36;
-    --secondary: #2aa198;
-    --background: #002b36;
-    --foreground: #93a1a1;
-    --destructive: #dc322f;
-    --sidebar-ring: #d33682;
-    --sidebar-accent: #2aa198;
-    --sidebar-border: #586e75;
-    --card-foreground: #93a1a1;
-    --sidebar-primary: #d33682;
-    --muted-foreground: #93a1a1;
-    --accent-foreground: #ffffff;
-    --popover-foreground: #93a1a1;
+    /* === Card / Glass surfaces === */
+    --card: rgba(255, 255, 255, 0.05);
+    --card-foreground: #e8e6f0;
+    --card-border: rgba(255, 255, 255, 0.1);
+
+    /* === Popover === */
+    --popover: rgba(18, 17, 26, 0.95);
+    --popover-foreground: #e8e6f0;
+
+    /* === Brand Primary (Purple) === */
+    --primary: #a855f7;
     --primary-foreground: #ffffff;
-    --sidebar-foreground: #93a1a1;
+    --primary-glow: rgba(168, 85, 247, 0.4);
+
+    /* === Secondary (Indigo) === */
+    --secondary: #6366f1;
     --secondary-foreground: #ffffff;
+
+    /* === Muted === */
+    --muted: rgba(255, 255, 255, 0.08);
+    --muted-foreground: #9898b8;
+
+    /* === Accent === */
+    --accent: #c084fc;
+    --accent-foreground: #ffffff;
+
+    /* === Feedback === */
+    --destructive: #ef4444;
     --destructive-foreground: #ffffff;
-    --sidebar-accent-foreground: #ffffff;
+    --success: #4ade80;
+    --warning: #facc15;
+
+    /* === Gamification === */
+    --streak-color: #f97316;
+    --gem-color: #60a5fa;
+    --xp-color: #a855f7;
+    --star-color: #facc15;
+
+    /* === Typography === */
+    --foreground: #e8e6f0;
+    --border: rgba(255, 255, 255, 0.1);
+    --input: rgba(255, 255, 255, 0.08);
+    --ring: #a855f7;
+
+    /* === Radius === */
+    --radius: 1rem;
+
+    /* === Chart colors === */
+    --chart-1: #a855f7;
+    --chart-2: #6366f1;
+    --chart-3: #4ade80;
+    --chart-4: #f97316;
+    --chart-5: #facc15;
+
+    /* === Fonts === */
+    --font-sans: 'Outfit', system-ui, sans-serif;
+    --font-mono: 'Space Mono', monospace;
+
+    /* === Sidebar (unused but kept for token completeness) === */
+    --sidebar: rgba(0, 0, 0, 0.4);
+    --sidebar-foreground: #e8e6f0;
+    --sidebar-primary: #a855f7;
     --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: rgba(255, 255, 255, 0.05);
+    --sidebar-accent-foreground: #e8e6f0;
+    --sidebar-border: rgba(255, 255, 255, 0.08);
+    --sidebar-ring: #a855f7;
   }
 }
 
@@ -120,5 +119,118 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
+/* ============================================================
+   Global PWA & Mobile Reset
+   ============================================================ */
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    min-height: 100dvh;
+    background-color: var(--background);
+    font-family: var(--font-sans);
+    color: var(--foreground);
+
+    /* Native PWA feel */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: none;
+
+    /* Font smoothing */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  /* Safe area utilities for iPhone notch + home indicator */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .px-safe {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Dynamic viewport height helpers */
+  .h-dvh {
+    height: 100dvh;
+  }
+  .min-h-dvh {
+    min-height: 100dvh;
+  }
+
+  /* Scrollbar styling for custom scroll areas */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(168, 85, 247, 0.3);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(168, 85, 247, 0.5);
+  }
+}
+
+/* ============================================================
+   Cosmic gradient background — applied once globally
+   ============================================================ */
+.cosmic-bg {
+  background: linear-gradient(to bottom, #0f0c29, #302b63, #24243e);
+}
+
+/* ============================================================
+   Glassmorphism utilities
+   ============================================================ */
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-elevated {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* ============================================================
+   Text glow utilities
+   ============================================================ */
+.text-glow-primary {
+  text-shadow: 0 0 20px rgba(168, 85, 247, 0.6);
+}
+.text-glow-white {
+  text-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
+}
+
+/* ============================================================
+   Landscape mode helpers
+   ============================================================ */
+@media (orientation: landscape) and (max-height: 500px) {
+  .landscape-hidden {
+    display: none !important;
+  }
+}
