@@ -3,6 +3,7 @@ import { useGeminiLive } from '../hooks/useGeminiLive';
 import { AudioManager } from '../../../shared/lib/audioManager';
 import { VideoCapture } from '../../../shared/lib/videoCapture';
 import { Button } from '../../../shared/ui/Button';
+import { Mascot } from '../../../shared/ui/Mascot';
 import { useLessonStore } from '../../../stores/useLessonStore';
 
 const audioManager = new AudioManager();
@@ -12,7 +13,7 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isActive, setIsActive] = useState(false);
   const { isConnected, isConnecting, error, connect, disconnect, sendAudioData, sendVideoData, sendClientContent } = useGeminiLive();
-  const { lessonPath, currentStepIndex, isPracticeModeActive, setPracticeModeActive, isBossStage, finalScore, feedback, status: feedbackStatus, isLessonComplete } = useLessonStore();
+  const { lessonPath, currentStepIndex, isPracticeModeActive, setPracticeModeActive, isBossStage, finalScore, feedback, status: feedbackStatus, isLessonComplete, mascotEmotion } = useLessonStore();
   const [isRecordingBuffer, setIsRecordingBuffer] = useState(false);
 
   const handleStart = async () => {
@@ -143,9 +144,22 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
   }, [disconnect]);
 
   return (
-    <div className="flex flex-col w-full space-y-4">
+    <div className="flex flex-col w-full space-y-4 relative">
        {/* Hidden video element required for browser capture API */}
        <video ref={videoRef} className="hidden" muted playsInline />
+
+       {/* Floating mascot: shows current AI emotion, bottom-right corner */}
+       {isActive && (
+         <div className="fixed bottom-28 right-4 z-40 pointer-events-none">
+           <Mascot
+             emotion={mascotEmotion}
+             size={88}
+             showMessage={mascotEmotion !== 'idle' && mascotEmotion !== 'thinking'}
+             autoRevertToIdle={true}
+             autoRevertDelay={4000}
+           />
+         </div>
+       )}
        
        <div className="bg-card border border-border rounded-2xl p-6 text-center space-y-4 relative z-20 shadow-[0_4px_0_0_var(--color-border)]">
           <h2 className="text-xl font-bold text-card-foreground">Live AI Tutor</h2>
