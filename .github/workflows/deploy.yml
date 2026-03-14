@@ -3,7 +3,8 @@ name: Deploy to Cloud Run via Terraform
 on:
   push:
     branches:
-      - master # Triggers on push to master branch
+      - main # Triggers on push to main branch
+      - SS-3 # Temporary trigger to test the pipeline right now
     paths:
       - 'backend/**' # Only redeploy if the Python backend changes
       - '.github/workflows/deploy.yml'
