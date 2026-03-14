@@ -28,7 +28,10 @@ app.add_middleware(
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok"}
+    return {
+        "status": "ok", 
+        "deployed_via": "Terraform + GitHub Actions"
+    }
     
 @app.post("/api/diagnostics/log")
 async def receive_client_log(request: Request):

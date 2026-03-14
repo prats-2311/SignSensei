@@ -26,6 +26,18 @@ export function useGeminiLive() {
   // A useRef is used (not Zustand) because it must update synchronously to block the second call
   // that arrives within ~500ms of the first.
   const isGradingWindowActiveRef = useRef<boolean>(false);
+  // ONE-SHOT TOKEN: Set by the Trojan Horse when it injects the Phase 3 override.
+  // Consumed (and reset) by the Phase Guard when it allows trigger_grading_window through.
+  // This decouples spam-prevention (hasUserSignaledDone) from authorization-grant.
+  // Without this, the Trojan Horse resetting hasUserSignaledDone would cause the Phase Guard
+  // to block the very grading call it just authorized.
+  const isGradingWindowGrantedRef = useRef<boolean>(false);
+  // POST-INCORRECT STATE TOKEN: Set to true by mark_sign_incorrect after a failed grade.
+  // While true, incoming user_is_resting_or_calibrating calls (stale from Phase 2 loop)
+  // receive a Phase 1 redirect response instead of the standard "keep looping" response.
+  // This prevents stale call responses from undoing the Mind Wipe.
+  // Reset to false when trigger_action_window fires (new attempt begins).
+  const isPostIncorrectRef = useRef<boolean>(false);
   
   const connect = useCallback(async (onAudioData?: (base64Audio: string) => void) => {
     if (onAudioData) audioCallbackRef.current = onAudioData;
@@ -35,6 +47,8 @@ export function useGeminiLive() {
     // call of the new session — before the user has signed anything.
     useLessonStore.getState().setHasUserSignaledDone(false);
     isGradingWindowActiveRef.current = false;
+    isGradingWindowGrantedRef.current = false;
+    isPostIncorrectRef.current = false;
     setIsConnecting(true);
     setError(null);
     try {
@@ -67,36 +81,48 @@ export function useGeminiLive() {
             systemInstruction: {
               parts: [{
                 text: `# Role
-You are SignSensei, an expert, encouraging ASL tutor. Your goal is to guide the user through a progression of ASL vocabulary.
+You are SignSensei, an expert, encouraging ASL (American Sign Language) tutor.
+You are a VISUAL-FIRST, audio-secondary AI. Your primary sensor is the VIDEO STREAM.
+Grading decisions MUST be based on what you SEE in the video frames — NOT on what you hear.
+Audio is only for delivering instructions and encouragement to the student.
 
 # Current State
 **Active Target Word:** '${targetWord}'
-**Acceptance Criteria for Target Word:** '${targetLessonWord.description}'
+**Acceptance Criteria (what the video must show):** '${targetLessonWord.description}'
 **Current Lesson Path:** ${allWords.map(w => w.word).join(', ')}
 
 # STRICT 3-PHASE STATE MACHINE
-You must obey these phases absolutely. Calling a tool outside its designated phase is a critical error that corrupts the session.
+You must obey these phases absolutely. Calling a tool outside its designated phase is a critical error.
 
 ## PHASE 1 — STANDBY
-* Introduce the target word and explain how to sign it.
-* Wait for the user to say "Ready" or "Let's Go".
+* Introduce the target word. Explain the physical mechanics of the sign.
+* Wait for the user to say "Ready" or "Let's Go" before transitioning.
 * ONLY tool you may call: 'trigger_action_window'.
-* FORBIDDEN in this phase: ALL grading tools, 'user_is_resting_or_calibrating', 'trigger_grading_window'.
+* FORBIDDEN: ALL grading tools, 'user_is_resting_or_calibrating', 'trigger_grading_window'.
 
-## PHASE 2 — OBSERVATION
-* Activated ONLY after you call 'trigger_action_window'.
-* Your ONLY job is to watch the video stream silently.
+## PHASE 2 — OBSERVATION (Silent Watching)
+* Activated ONLY after 'trigger_action_window' is called.
+* DO NOT generate any audio or speech in this phase.
+* You may passively receive audio transcriptions — ignore them. Do NOT act on them.
 * ONLY tool you may call: 'user_is_resting_or_calibrating'. Loop it continuously.
-* DO NOT listen for any verbal cues. DO NOT attempt to grade anything.
-* FORBIDDEN in this phase: ALL grading tools, 'trigger_action_window'.
-* The client system will send you an override command in the tool response when the user signals completion. Wait for this command.
+* FORBIDDEN: ALL grading tools, 'trigger_action_window'.
+* The client system will inject a [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command into a tool response when the user signals completion. Wait passively for this — do not guess.
 
-## PHASE 3 — EVALUATION
-* Activated ONLY when you receive a [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command from the client.
-* Upon receiving this command, you MUST immediately call 'trigger_grading_window'.
-* After calling 'trigger_grading_window', analyze the video frames and call a grading tool.
-* Authorized tools: 'mark_sign_correct', 'mark_sign_incorrect', 'mark_sentence_flow'.
-* FORBIDDEN in this phase: 'user_is_resting_or_calibrating', 'trigger_action_window'.`
+## PHASE 3 — EVALUATION (Grading)
+* Activated ONLY when you receive a [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] from the client in a tool response.
+* Your ONLY immediate action: call 'trigger_grading_window'. Do not speak. Do not evaluate yet.
+* After calling 'trigger_grading_window', you will receive detailed grading criteria in the response.
+* Grade ONLY the target word '${targetWord}'. If the user accidentally performed a different sign, IGNORE IT.
+* Grade based on video frames ONLY. If no movement occurred → NO_MOVEMENT. Wrong sign → WRONG_SIGN. Wrong form → POOR_FORM.
+* Authorized grading tools: 'mark_sign_correct', 'mark_sign_incorrect', 'mark_sentence_flow'.
+* FORBIDDEN: 'user_is_resting_or_calibrating', 'trigger_action_window'.
+
+## PHASE 1 RETURN (After Grading)
+* After calling any grading tool, the tool response will contain [SYSTEM OVERRIDE: FULL CONTEXT RESET — PHASE 1 RESTORED].
+* You are immediately back in PHASE 1 — STANDBY. All Phase 2 and Phase 3 instructions are void and cancelled.
+* Say the given feedback verbatim. Tell the user how to try again or what comes next.
+* The ONLY tool you may now call is 'trigger_action_window', ONLY when user says 'Ready' or 'Let's Go'.
+* Do NOT call 'user_is_resting_or_calibrating' or any grading tool — you are in Phase 1 Standby.`
               }]
             },
             tools: [
@@ -104,7 +130,7 @@ You must obey these phases absolutely. Calling a tool outside its designated pha
                 functionDeclarations: [
                   {
                     name: "trigger_action_window",
-                    description: "PHASE 1 ONLY. Call this when the human says 'Ready' or 'Let's Go' to transition to Phase 2 (Observation). Do NOT call this at any other time.",
+                    description: "PHASE 1 ONLY. Call this ONLY when the human explicitly says 'Ready' or 'Let's Go'. This transitions the session to Phase 2 (Observation). After calling this tool, immediately begin looping 'user_is_resting_or_calibrating'. Do NOT call this at any other time. Do NOT call this during Phase 2 or Phase 3.",
                   },
                   {
                     name: "show_sign_reference",
@@ -112,19 +138,19 @@ You must obey these phases absolutely. Calling a tool outside its designated pha
                   },
                   {
                     name: "user_is_resting_or_calibrating",
-                    description: "PHASE 2 ONLY. Call this continuously in a loop while watching the video stream. Do not call any other tool while in Phase 2. The client system will send you a special override command in the response when the human signals completion.",
+                    description: "PHASE 2 ONLY. Call this continuously in a loop while watching the video stream. Do not call any other tool while in Phase 2. Do not speak. IMPORTANT: Watch every tool response carefully — it will contain one of two override commands: (1) [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] — immediately call 'trigger_grading_window' and stop looping this tool. (2) [SYSTEM OVERRIDE: FULL CONTEXT RESET — PHASE 1 RESTORED] — STOP calling this tool immediately. Phase 2 is cancelled. You are back in Phase 1 Standby. Do NOT call this again until the user says 'Ready' and you call 'trigger_action_window' first.",
                   },
                   {
                     name: "trigger_grading_window",
-                    description: "PHASE 2 to PHASE 3 TRANSITION. Call this ONLY when you receive the [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command from the client in a tool response. Do NOT call this on your own initiative.",
+                    description: "PHASE 2 to PHASE 3 TRANSITION. Call this ONLY in direct response to receiving the [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command from the client. Do NOT call this on your own initiative. After calling this, wait for the tool response — it will contain your grading instructions. Do not evaluate or speak until you receive those instructions.",
                   },
                   {
                     name: "mark_sign_correct",
-                    description: "PHASE 3 ONLY (Single Word). Call this ONLY in Phase 3 after analyzing video frames, if the human perfectly executed the required physical mechanics of the target sign.",
+                    description: "PHASE 3 ONLY (Single Word). Call this ONLY in Phase 3, after carefully analyzing video frames, if the video UNDENIABLY shows the human executing the exact physical mechanics of the target sign. CRITICAL: Do NOT call this if the user made no movement, sat still, performed a different sign, or if you are uncertain. Only call this if the evidence in the video is conclusive.",
                   },
                   {
                     name: "mark_sign_incorrect",
-                    description: "PHASE 3 ONLY (Single Word). Call this ONLY in Phase 3 after analyzing video frames, if the human failed the sign. Provide the specific physical reason.",
+                    description: "PHASE 3 ONLY (Single Word). Call this ONLY in Phase 3 after analyzing video frames, if the required sign mechanics were NOT correctly performed. CRITICAL: Grade based ONLY on what you SEE in the video — never on what you heard. Do NOT mention any other sign the user may have accidentally performed. Provide a specific physical reason for failure. After calling this, the tool response will contain [SYSTEM OVERRIDE: FULL CONTEXT RESET — PHASE 1 RESTORED] — read it and follow its instructions exactly. Do not call any tool until you are back in Phase 1.",
                     parameters: {
                       type: "OBJECT",
                       properties: {
@@ -146,13 +172,13 @@ You must obey these phases absolutely. Calling a tool outside its designated pha
                   },
                   {
                     name: "mark_sentence_flow",
-                    description: "PHASE 3 ONLY (Boss Stage). Call this ONLY in Phase 3 after analyzing video frames for the full sentence signing performance.",
+                    description: "PHASE 3 ONLY (Boss Stage). Call this ONLY in Phase 3 after analyzing video frames for the full sentence signing performance. After calling this, the tool response will contain [SYSTEM OVERRIDE: FULL CONTEXT RESET — PHASE 1 RESTORED] — read it and follow its instructions exactly. Do not call any tool until you are back in Phase 1.",
                     parameters: {
                       type: "OBJECT",
                       properties: {
                         score: {
-                          type: "INTEGER",
-                          description: "A star rating from 1 to 3 indicating how fluid and accurate their full sentence signing was. 1 = poor, 2 = good, 3 = perfect."
+                           type: "INTEGER",
+                          description: "A rating from 1 to 3: 1 = No movement, wrong sequence, or could not determine signing. 2 = Signed most but not all words correctly. 3 = All words signed correctly with fluid transitions. Default to 1 if you did not clearly see the full sentence being signed."
                         },
                         feedback: {
                           type: "STRING",
@@ -209,8 +235,8 @@ Objective:
 3. Stop speaking. Wait for audio input.
 
 [CRITICAL EXECUTION RULE]
-Phase 1 is Active. You cannot use 'mark_sentence_flow' or 'mark_sign_correct'.
-You may only use 'trigger_action_window' after the user explicitly says "Ready" or "Let's Go".
+Phase 1 is Active. FORBIDDEN: 'user_is_resting_or_calibrating', 'trigger_grading_window', 'mark_sign_correct', 'mark_sign_incorrect', 'mark_sentence_flow'.
+The ONLY tool you may call is 'trigger_action_window', ONLY after the user says "Ready" or "Let's Go".
 End transmission. Wait for Audio Input.`;
         } else {
             if (previousWord) {
@@ -225,8 +251,8 @@ Objective:
 3. Stop speaking. Wait for audio input.
 
 [CRITICAL EXECUTION RULE]
-Phase 1 is Active. You cannot use 'mark_sign_correct'.
-You may only use 'trigger_action_window' after the user explicitly says "Ready" or "Let's Go".
+Phase 1 is Active. FORBIDDEN: 'user_is_resting_or_calibrating', 'trigger_grading_window', 'mark_sign_correct', 'mark_sign_incorrect'.
+The ONLY tool you may call is 'trigger_action_window', ONLY after the user says "Ready" or "Let's Go".
 End transmission. Wait for Audio Input.`;
             } else {
                 systemText = `[SYSTEM EVENT: LESSON STARTED]
@@ -238,8 +264,8 @@ Objective:
 2. Stop speaking. Wait for audio input.
 
 [CRITICAL EXECUTION RULE]
-Phase 1 is Active. You cannot use 'mark_sign_correct'.
-You may only use 'trigger_action_window' after the user explicitly says "Ready" or "Let's Go".
+Phase 1 is Active. FORBIDDEN: 'user_is_resting_or_calibrating', 'trigger_grading_window', 'mark_sign_correct', 'mark_sign_incorrect'.
+The ONLY tool you may call is 'trigger_action_window', ONLY after the user says "Ready" or "Let's Go".
 End transmission. Wait for Audio Input.`;
             }
         }
@@ -327,13 +353,16 @@ End transmission. Wait for Audio Input.`;
               if (call.name === 'mark_sign_correct') {
                 const store = useLessonStore.getState();
                 
-                if (!store.hasUserSignaledDone) {
-                    logger.warn(`🚫 [Event Lockout] Gemini attempted to mark correct before user said "Done"! Blocking.`);
+                // PHASE GUARD: Block if Phase 3 was not properly activated via trigger_grading_window.
+                // isGradingWindowActiveRef is set true when trigger_grading_window fires and is
+                // more reliable than hasUserSignaledDone, which is already reset earlier in the flow.
+                if (!isGradingWindowActiveRef.current) {
+                    logger.warn(`🚫 [Phase Guard] mark_sign_correct called before Phase 3 was activated. Blocking.`);
                     responses.push({
                         id: call.id,
                         name: call.name,
                         response: { 
-                            result: `[SYSTEM ERROR] CRITICAL INSTRUCTION: You MUST WAIT SILENTLY until the human explicitly says "Done" or "Finished" in the audio transcript before grading.` 
+                            result: `[SYSTEM: mark_sign_correct rejected] You called a grading tool before Phase 3 was activated. You are still in Phase 2 — Observation. Do not speak. Return to calling 'user_is_resting_or_calibrating' and wait for the [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command.` 
                         }
                     });
                     continue; 
@@ -417,23 +446,37 @@ End transmission. Wait for Audio Input.`;
 
                 if (store.hasUserSignaledDone) {
                   // === TROJAN HORSE: Phase 2 -> Phase 3 Transition ===
-                  // The frontend heard "Done" and set the flag. Now we hijack the next
+                  // The frontend heard "Done" and set the flag. We hijack the next
                   // resting tool response to command Gemini to switch to Phase 3.
                   //
-                  // FIX (Trojan Horse Spam): Reset the flag IMMEDIATELY before pushing the response.
-                  // Multiple user_is_resting calls queued simultaneously (from Gemini's batch polling)
-                  // would all see hasUserSignaledDone=true and inject 7+ override messages.
-                  // Resetting synchronously here ensures ONLY the first call injects the override.
+                  // FIX (Spam): Reset hasUserSignaledDone IMMEDIATELY (synchronously) so
+                  // queued batch calls don't all see the flag as true and spam 7+ overrides.
                   store.setHasUserSignaledDone(false);
-                  logger.info("🎯 [Trojan Horse] Done signal was set. Injecting Phase 3 override into resting tool response.");
+                  // FIX (Phase Guard Conflict): Set the one-shot authorization token BEFORE
+                  // injecting the override. The Phase Guard checks this token (not hasUserSignaledDone)
+                  // so it will allow the trigger_grading_window call that results from this override.
+                  isGradingWindowGrantedRef.current = true;
+                  logger.info("🎯 [Trojan Horse] Done signal received. Granting one-shot token. Injecting Phase 3 override.");
                   responses.push({
                     id: call.id,
                     name: call.name,
                     response: { result: `[SYSTEM OVERRIDE: DONE SIGNAL RECEIVED]
-The human has explicitly said "Done". Observation Mode is now over.
+The user has completed their sign and signaled "Done". You are now transitioning from Phase 2 (Observation) to Phase 3 (Grading).
 
-Your immediate next action: Call the 'trigger_grading_window' tool RIGHT NOW.
-Do not speak. Do not evaluate yet. Just call the tool immediately.` }
+Your next action: Call 'trigger_grading_window' to initiate Phase 3.
+After calling it, you will receive your grading instructions in the tool response.
+Do not speak. Do not evaluate yet. Wait for the grading instructions before assessing the sign.` }
+                  });
+                } else if (isPostIncorrectRef.current) {
+                  // === POST-INCORRECT PHASE 1 REDIRECT ===
+                  // isPostIncorrectRef is set true by mark_sign_incorrect after a failed grade.
+                  // Stale Phase 2 loop calls arrive here and get the Phase 1 redirect instead
+                  // of the standard "keep looping" response, making it consistent with the Mind Wipe.
+                  logger.info("🔄 [Gemini Engine] Post-incorrect stale resting call intercepted. Redirecting to Phase 1.");
+                  responses.push({
+                    id: call.id,
+                    name: call.name,
+                    response: { result: `[SYSTEM OVERRIDE: FULL CONTEXT RESET — PHASE 1 RESTORED]\nAll Phase 2 and Phase 3 instructions are now void. You are in Phase 1 — STANDBY.\nDo NOT call 'user_is_resting_or_calibrating' again. Do NOT call any grading tool.\nWait for the user to say "Ready" or "Let's Go", then call 'trigger_action_window'.` }
                   });
                 } else {
                   // === STANDARD PHASE 2 LOOP ===
@@ -441,25 +484,28 @@ Do not speak. Do not evaluate yet. Just call the tool immediately.` }
                   responses.push({
                     id: call.id,
                     name: call.name,
-                    response: { result: "Acknowledged. Continue watching the video stream. Do not grade yet. Wait for the client override command." }
+                    response: { result: "Phase 2 — Observation Mode is active. Do not speak or evaluate. Continue looping 'user_is_resting_or_calibrating'. The client will inject a [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] into a future tool response when the user signals completion. Wait for that message." }
                   });
                 }
 
               } else if (call.name === 'trigger_grading_window') {
                 const store = useLessonStore.getState();
 
-                // FIX (Bug 2): Guard against hallucinated trigger_grading_window calls.
-                // Gemini may call this tool spontaneously due to context contamination from a
-                // previous Trojan Horse override. Reject it hard if the user hasn't said "Done".
-                if (!store.hasUserSignaledDone) {
-                  logger.warn(`🚫 [Phase Guard] trigger_grading_window called without Done signal! Rejecting.`);
+                // PHASE GUARD: Rejects unauthorized trigger_grading_window calls.
+                // Checks the one-shot isGradingWindowGrantedRef token set by the Trojan Horse.
+                // This decouples the authorization check from hasUserSignaledDone, which was
+                // already reset by the Trojan Horse before this call arrives.
+                if (!isGradingWindowGrantedRef.current) {
+                  logger.warn(`🚫 [Phase Guard] trigger_grading_window called without an authorization token. Rejecting.`);
                   responses.push({
                     id: call.id,
                     name: call.name,
-                    response: { result: `[SYSTEM ERROR] UNAUTHORIZED CALL. You called 'trigger_grading_window' without receiving the [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command. This call is REJECTED. Return to Phase 2 immediately. Call 'user_is_resting_or_calibrating' and wait for the client override command.` }
+                    response: { result: `[SYSTEM: trigger_grading_window rejected] You are still in Phase 2 — Observation. The client has not sent the [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] signal yet. Return to Phase 2 by calling 'user_is_resting_or_calibrating'. Do not speak. Wait passively for the override in a future tool response.` }
                   });
                   continue;
                 }
+                // Consume the one-shot token so a second call can't slip through.
+                isGradingWindowGrantedRef.current = false;
 
                 // FIX (Bug 3): Guard against duplicate trigger_grading_window calls.
                 // Gemini's output stream can produce two calls within ~500ms. Only the first
@@ -504,11 +550,14 @@ You are now in Phase 3. Observation is over.
 Review the video frames from the last 3-5 seconds.
 You are now authorized to call 'mark_sign_correct' or 'mark_sign_incorrect'.
 
-Grading criteria:
-- If the user did not move or sat still → call 'mark_sign_incorrect' with reason_category 'NO_MOVEMENT'.
-- If they signed a completely different sign → call 'mark_sign_incorrect' with reason_category 'WRONG_SIGN'.
-- If their form was partially wrong (wrong hand shape, location, or movement) → call 'mark_sign_incorrect' with reason_category 'POOR_FORM'.
-- ONLY if the video undeniably proves they executed the exact mechanics → call 'mark_sign_correct'.`;
+Grading rules (evaluate in this order):
+1. If the user did not move or sat still → 'mark_sign_incorrect', reason: 'NO_MOVEMENT'.
+2. If they performed a recognizably different sign → 'mark_sign_incorrect', reason: 'WRONG_SIGN'.
+3. If the motion was present but form was wrong (bad handshape, wrong location, wrong movement) → 'mark_sign_incorrect', reason: 'POOR_FORM'.
+4. ONLY if the video undeniably proves the exact '${activeWord}' mechanics described above → 'mark_sign_correct'.
+
+CRITICAL: Grade ONLY the target sign '${activeWord}'. If they accidentally performed any other sign (e.g. a previous lesson word), IGNORE IT completely — score based on what they DID during this attempt, not past attempts.
+CRITICAL: Grade based ONLY on what you see in the video frames — NOT on what you heard.`;
                 }
 
                 responses.push({
@@ -527,19 +576,20 @@ Grading criteria:
                   responses.push({
                     id: call.id,
                     name: call.name,
-                    response: { result: `[SYSTEM ERROR] FORBIDDEN TOOL IN BOSS STAGE. 'mark_sign_incorrect' does not exist in the Boss Stage. The Boss Stage uses a star rating system. You MUST call 'mark_sentence_flow' instead. Evaluate the full sentence and call mark_sentence_flow with a score of 1 (poor), 2 (good), or 3 (perfect), plus specific feedback on their transitions between signs.` }
+                    response: { result: `[SYSTEM: mark_sign_incorrect rejected — Boss Stage active] This tool is not available during the Boss Stage. The Boss Stage uses a 1-3 star rating system. You must call 'mark_sentence_flow' instead. Evaluate the full sentence performance and call mark_sentence_flow with a score of 1 (poor), 2 (good), or 3 (perfect), plus specific feedback on their transitions between signs.` }
                   });
                   continue;
                 }
 
-                // === SAFETY SHIELD 2: Block if user hasn't signaled done ===
-                // This is a last-resort guard in case Gemini ignores the phase rules.
-                if (!store.hasUserSignaledDone) {
-                  logger.warn(`🚫 [Event Lockout] Gemini attempted to mark_sign_incorrect before user said "Done"! Blocking.`);
+                // === SAFETY SHIELD 2: Block if grading was not authorized via proper Phase 3 flow ===
+                // Checks isGradingWindowActiveRef (set true when trigger_grading_window fired).
+                // This is more reliable than hasUserSignaledDone, which is reset earlier in the flow.
+                if (!isGradingWindowActiveRef.current) {
+                  logger.warn(`🚫 [Phase Guard] mark_sign_incorrect called before Phase 3 was activated. Blocking.`);
                   responses.push({
                     id: call.id,
                     name: call.name,
-                    response: { result: `[SYSTEM ERROR] CRITICAL PROTOCOL VIOLATION. You called a grading tool in Phase 2. This is FORBIDDEN. Return to Phase 2 immediately. Call 'user_is_resting_or_calibrating' and wait for the client override command.` }
+                    response: { result: `[SYSTEM: mark_sign_incorrect rejected] You called a grading tool before Phase 3 was activated. You are still in Phase 2 — Observation. Do not speak. Return to calling 'user_is_resting_or_calibrating' and wait for the [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command.` }
                   });
                   continue;
                 }
@@ -569,6 +619,11 @@ Grading criteria:
                 store.setHasUserSignaledDone(false);
                 // FIX (Bug 3): Reset grading window guard so it works on next attempt.
                 isGradingWindowActiveRef.current = false;
+                // STALE CALL FIX: Signal to user_is_resting_or_calibrating handler that
+                // we are in post-incorrect Phase 1 state. Stale Phase 2 loop calls will
+                // now receive the Phase 1 redirect instead of the standard "keep looping"
+                // response, preventing them from undoing the Mind Wipe.
+                isPostIncorrectRef.current = true;
 
                 // FIX (Bug 2): Aggressive Mind Wipe response.
                 // Explicitly cancels the Trojan Horse override command that is still in Gemini's
@@ -608,12 +663,11 @@ Wait silently.` }
                 if (state.isBossStage) {
                     // Intercept video request during Boss Stage because there is no single video for a full sentence
                     state.setAiPaused(false);
-                    const fullSentence = state.lessonPath.map(w => w.word).join(', ');
                     responses.push({
                         id: call.id,
                         name: call.name,
                         response: {
-                           result: `SYSTEM ERROR: You cannot open a video during the Boss Stage. Your Objective: Apologize and verbally explain to the user that there is no video for the full sentence '${fullSentence}'. Tell them they must try to remember the individual signs and string them together.`
+                           result: `[SYSTEM: show_sign_reference rejected — Boss Stage active] There is no reference video for the full sentence. Apologize to the user and verbally explain that individual sign videos are not available during the Boss Stage. Encourage them to recall the signs they learned and string them together.`
                         }
                     });
                 } else {
@@ -637,9 +691,9 @@ Objective:
 1. Say: "I've pulled up the video for '${signName}'."
 2. Stop speaking. Wait for audio input.
 
-[CRITICAL EXECUTION SHIELD]
-You are in Phase 1. DO NOT call mark_sign_correct or mark_sign_incorrect.
-When the user says "Ready", call trigger_action_window.
+[SYSTEM EVENT: PHASE 1 RULES ACTIVE]
+You are in Phase 1 — STANDBY. FORBIDDEN: 'user_is_resting_or_calibrating', 'trigger_grading_window', 'mark_sign_correct', 'mark_sign_incorrect'.
+The ONLY tool you may call is 'trigger_action_window', ONLY when the user says "Ready".
 End transmission. Wait for Audio Input.
 ` 
                        }
@@ -671,6 +725,9 @@ End transmission. Wait for Audio Input.
                 // Feedback now persists after mark_sign_incorrect without a timeout,
                 // so we must clear it here to give a fresh slate for the new attempt.
                 state.setFeedback("", "idle");
+                // STALE CALL FIX: A new attempt is starting. Clear the post-incorrect flag so
+                // user_is_resting_or_calibrating handler returns to normal Phase 2 loop behavior.
+                isPostIncorrectRef.current = false;
                 
                 const activeWordObj = state.lessonPath[state.currentStepIndex];
                 const activeWord = activeWordObj ? activeWordObj.word : 'unknown';
@@ -724,8 +781,7 @@ Wait for that override command. Do not guess. Do not act early.`;
                          id: call.id,
                          name: call.name,
                          response: { 
-                             result: `[SYSTEM ERROR] You attempted to finish the lesson, but the Boss Stage is still active. 
-CRITICAL INSTRUCTION: DO NOT SPEAK. YOU MUST WAIT FOR THE USER TO COMPLETE THE BOSS STAGE.` 
+                             result: `[SYSTEM: finish_lesson rejected — Boss Stage still active] The lesson cannot be finished yet because the Boss Stage evaluation has not been completed. Do not speak. Wait for the user to sign the full sentence, then grade it using 'mark_sentence_flow'.` 
                          }
                      });
                      continue;
@@ -748,25 +804,31 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. YOU MUST WAIT FOR THE USER TO COMPLETE THE B
                    response: { result: "ok" }
                 });
               } else if (call.name === 'mark_sentence_flow') {
-                const store = useLessonStore.getState();
-                // FIX (Bug 3): Reset grading window guard after Boss Stage grade.
-                isGradingWindowActiveRef.current = false;
-                store.setHasUserSignaledDone(false);
-                logger.info("🌟 [Gemini Engine] mark_sentence_flow triggered! Boss Stage Complete.");
+                 const store = useLessonStore.getState();
+                 
+                 // FIX (Dead-Code Bug): Capture authorization state BEFORE resetting the refs.
+                 // Previously, isGradingWindowActiveRef and hasUserSignaledDone were reset to false
+                 // BEFORE the guard checked them, making the guard always block even legitimate calls.
+                 // We now snapshot the authorization state first.
+                 const isGradingAuthorized = isGradingWindowActiveRef.current;
+                 
+                 // Reset grading window guard after Boss Stage grade.
+                 isGradingWindowActiveRef.current = false;
+                 store.setHasUserSignaledDone(false);
+                 logger.info("🌟 [Gemini Engine] mark_sentence_flow triggered! Boss Stage Complete.");
 
-                if (!store.hasUserSignaledDone) {
-                    logger.warn(`🚫 [Event Lockout] Gemini attempted to grade Boss Stage before user said "Done"! Blocking.`);
-                    const fullSentence = store.lessonPath.map(w => w.word).join(', ');
-                    responses.push({
-                        id: call.id,
-                        name: call.name,
-                        response: { 
-                            result: `[SYSTEM ERROR - EVENT LOCKOUT] You attempted to grade the sentence sequence before the user gave the completion signal.
-CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. You MUST WAIT SILENTLY until the human explicitly says "Done" or "Finished". Target sequence: '${fullSentence}'.` 
-                        }
-                    });
-                    continue; 
-                }
+                 if (!isGradingAuthorized) {
+                     logger.warn(`🚫 [Event Lockout] mark_sentence_flow called before trigger_grading_window authorized it. Blocking.`);
+                     const fullSentence = store.lessonPath.map(w => w.word).join(', ');
+                     responses.push({
+                         id: call.id,
+                         name: call.name,
+                         response: { 
+                             result: `[SYSTEM: mark_sentence_flow rejected] You are in Phase 2 — Observation. The user has not signaled completion yet. Do not speak. Continue looping 'user_is_resting_or_calibrating' and wait for the [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command. Target sequence: '${fullSentence}'.` 
+                         }
+                     });
+                     continue; 
+                 }
                 
                 const args = call.args as { score: number, feedback: string };
                 const score = Math.min(3, Math.max(1, args.score !== undefined ? args.score : 3));
@@ -795,35 +857,24 @@ CRITICAL INSTRUCTION: DO NOT SPEAK. DO NOT APOLOGIZE. GENERATE NO AUDIO. You MUS
                 }
                 
                 const passedBossStage = score >= 2;
-                if (passedBossStage) {
-                    responses.push({
-                       id: call.id,
-                       name: call.name,
-                       response: { result: "System: Boss Stage passed successfully. The curriculum is complete." }
-                    });
-                } else {
-                    // Inject Failure Amnesia Guardrail
-                    const fullSentence = store.lessonPath.join(', ');
-                    responses.push({
-                       id: call.id,
-                       name: call.name,
-                       response: { 
-                           result: `[SYSTEM OVERRIDE: BOSS STAGE FAILED]
-The user scored ${score}/3. They did not pass the Boss Stage.
-They must retry the Boss Stage.
+                // STALE CALL FIX: Boss Stage grading is complete for all scores.
+                // Set post-grade flag so stale user_is_resting_or_calibrating calls
+                // receive a Phase 1 redirect instead of the Phase 2 "keep looping" response.
+                isPostIncorrectRef.current = true;
 
-Your Immediate Objective:
-1. Explain why they got a low score and encourage them to try again.
-2. Wait in standby mode for them to say "Ready" again.
-
-CRITICAL RULES FOR RETRY:
-* You are STILL in the Boss Stage. The target is STILL the full sentence: '${fullSentence}'.
-* YOU MUST NOT use 'mark_sign_correct' or 'mark_sign_incorrect' under ANY circumstances during this retry.
-* DO NOT call trigger_action_window until they say "Ready".
-* CRITICAL: YOU MUST NOT CALL 'mark_sentence_flow' AGAIN until AFTER you have called 'trigger_action_window' and the human signals completion. Do not grade resting hands in standby mode.`
-                       }
-                    });
-                }
+                responses.push({
+                   id: call.id,
+                   name: call.name,
+                   response: {
+                       result: passedBossStage
+                           ? `[SYSTEM OVERRIDE: FULL CONTEXT RESET — PHASE 1 RESTORED]
+Boss Stage: PASSED (score: ${score}/3). The lesson curriculum is now complete.
+Do not call any tools. Enthusiastically congratulate the user. Say verbatim: "${feedback}". Then fall silent.`
+                           : `[SYSTEM OVERRIDE: FULL CONTEXT RESET — PHASE 1 RESTORED]
+Boss Stage: Completed with score ${score}/3. Results have been recorded — the lesson is now over.
+Do not call any tools. Warmly encourage the user and explain the score. Say verbatim: "${feedback}". Then fall silent.`
+                   }
+                });
               }
             }
 
