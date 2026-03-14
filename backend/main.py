@@ -9,7 +9,6 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field
 from typing import List
 from google import genai
-from google.genai import types
 
 app = FastAPI(title="SignSensei Token Service")
 
