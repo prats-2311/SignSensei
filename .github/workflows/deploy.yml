@@ -1,0 +1,67 @@
+name: Deploy to Cloud Run via Terraform
+
+on:
+  push:
+    branches:
+      - master # Triggers on push to master branch
+    paths:
+      - 'backend/**' # Only redeploy if the Python backend changes
+      - '.github/workflows/deploy.yml'
+
+env:
+  PROJECT_ID: signsensei
+  REGION: us-central1
+  SERVICE_NAME: signsensei-api
+  REPO_NAME: signsensei-api-repo # Must match the google_artifact_registry_repository name in main.tf
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    # These permissions are required for Workload Identity Federation
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 1. Authenticate to Google Cloud using Workload Identity Federation
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          token_format: 'access_token'
+          workload_identity_provider: 'projects/182928399501/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'github-actions@signsensei.iam.gserviceaccount.com'
+
+      # 2. Setup Docker to use Artifact Registry
+      - name: 'Set up Cloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v2'
+        with:
+          version: '>= 363.0.0'
+
+      - name: 'Docker Auth'
+        run: |-
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      # 3. Build the Docker Image
+      - name: 'Build Docker Image'
+        working-directory: ./backend
+        run: |-
+          docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }} -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.SERVICE_NAME }}:latest .
+
+      # 4. Push the image to Terraform-governed Artifact Registry
+      - name: 'Push Docker Image'
+        run: |-
+          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.SERVICE_NAME }} --all-tags
+
+      # 5. Deploy to the live Cloud Run service
+      - name: 'Deploy to Cloud Run'
+        uses: 'google-github-actions/deploy-cloudrun@v2'
+        with:
+          service: '${{ env.SERVICE_NAME }}'
+          region: '${{ env.REGION }}'
+          image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}'
+          flags: '--allow-unauthenticated'
