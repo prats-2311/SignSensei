@@ -1,4 +1,11 @@
 {
+  "firestore": [
+    {
+      "database": "sign-sensei-db",
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
+    }
+  ],
   "hosting": {
     "public": "dist",
     "ignore": [

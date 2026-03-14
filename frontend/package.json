@@ -17,6 +17,7 @@
     "axios": "^1.13.6",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
+    "firebase": "^12.10.0",
     "framer-motion": "^12.34.2",
     "loglevel": "^1.9.2",
     "lucide-react": "^0.574.0",

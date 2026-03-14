@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
-import { Coins, Flame, Trophy, Lock, Star, Sparkles, Loader2 } from 'lucide-react';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { Coins, Flame, Trophy, Lock, Star, Sparkles, Loader2, Layers } from 'lucide-react';
 import { useUserStore } from './stores/useUserStore';
 import { useLessonStore } from './stores/useLessonStore';
 import { ProgressBar } from './shared/ui/ProgressBar';
@@ -11,8 +11,11 @@ import { RiveMascot } from './features/live-session/components/RiveMascot';
 import { LiveSession } from './features/live-session/components/LiveSession';
 import { AudioHapticController } from './shared/ui/AudioHapticController';
 import { VictoryModal } from './shared/ui/VictoryModal';
+import { DecksScreen } from './features/dashboard/DecksScreen';
 import { LESSONS } from './data/curriculum';
 import type { LessonData } from './data/curriculum';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from './shared/lib/firebase';
 
 // --- Screen Components ---
 
@@ -45,6 +48,21 @@ function MapScreen() {
           if (!res.ok) throw new Error("Failed to generate lesson");
           
           const lessonData = await res.json();
+
+          // Save to Firestore
+          const user = auth.currentUser;
+          if (user) {
+              await setDoc(doc(db, 'decks', lessonData.lessonId), {
+                  creatorId: user.uid,
+                  title: lessonData.title,
+                  prompt: customPrompt,
+                  path: lessonData.path,
+                  createdAt: serverTimestamp(),
+                  isPublic: false
+              });
+          }
+
+          useLessonStore.getState().resetLesson();
           initializeLesson(lessonData.lessonId, lessonData.path);
           navigate(`/lesson/${lessonData.lessonId}`);
       } catch (err) {
@@ -181,18 +199,6 @@ function MapScreen() {
          <AvatarCanvas />
       </div>
 
-       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-xl border-t border-border/50 px-6 py-4 flex justify-between items-center z-50">
-         <Button variant="ghost" size="icon" className="text-primary hover:bg-muted">
-            <Trophy className="w-7 h-7" />
-         </Button>
-         <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-muted">
-            <Flame className="w-7 h-7" />
-         </Button>
-         <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-muted">
-            <Coins className="w-7 h-7" />
-         </Button>
-      </nav>
     </>
   );
 }
@@ -224,8 +230,10 @@ function AppContent() {
   const { referenceSign, setReferenceSign, isLessonComplete, resetLesson, setAiPaused } = useLessonStore();
   // Using global xp directly so no need to recalculate currentLevelProgress here or pass it if you don't want to.
   const navigate = useNavigate();
+  const location = useLocation();
 
   const currentLevel = Math.floor(xp / 100) + 1;
+  const showBottomNav = location.pathname === '/' || location.pathname === '/decks';
 
   // Handle post-lesson routing seamlessly
   if (isLessonComplete) {
@@ -268,9 +276,24 @@ function AppContent() {
       <main className="pt-24 pb-32 px-4 max-w-md mx-auto relative min-h-screen flex flex-col">
           <Routes>
             <Route path="/" element={<MapScreen />} />
+            <Route path="/decks" element={<DecksScreen />} />
             <Route path="/lesson/:lessonId" element={<LessonScreen />} />
           </Routes>
       </main>
+
+      {showBottomNav && (
+        <nav className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-xl border-t border-border/50 px-6 py-4 flex justify-between items-center z-50">
+           <Button variant="ghost" size="icon" onClick={() => navigate('/')} className={`${location.pathname === '/' ? 'text-primary' : 'text-muted-foreground'} hover:bg-muted transition-colors rounded-full`}>
+              <Trophy className="w-7 h-7" />
+           </Button>
+           <Button variant="ghost" size="icon" onClick={() => navigate('/decks')} className={`${location.pathname === '/decks' ? 'text-primary' : 'text-muted-foreground'} hover:bg-muted transition-colors rounded-full`}>
+              <Layers className="w-7 h-7" />
+           </Button>
+           <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-full pointer-events-none opacity-50">
+              <Coins className="w-7 h-7" />
+           </Button>
+        </nav>
+      )}
 
       {/* Global Modals */}
       {referenceSign && (
