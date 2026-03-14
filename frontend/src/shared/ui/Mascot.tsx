@@ -137,6 +137,7 @@ export function Mascot({
           src={imgSrc}
           alt={`Mascot: ${resolvedEmotion}`}
           className="w-full h-full object-contain drop-shadow-[0_8px_24px_rgba(168,85,247,0.5)]"
+          style={{ mixBlendMode: 'screen' }}
           draggable={false}
         />
       </motion.div>

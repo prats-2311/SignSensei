@@ -237,10 +237,7 @@ function MapScreen() {
         })}
       </div>
 
-      {/* 3D Avatar Background (Decorative) */}
-      <div className="fixed inset-0 z-0 pointer-events-none opacity-20 mix-blend-screen scale-110">
-        <AvatarCanvas />
-      </div>
+
     </>
   );
 }

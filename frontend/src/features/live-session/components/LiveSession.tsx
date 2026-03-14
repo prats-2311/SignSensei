@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useGeminiLive } from '../hooks/useGeminiLive';
 import { AudioManager } from '../../../shared/lib/audioManager';
 import { VideoCapture } from '../../../shared/lib/videoCapture';
-import { Button } from '../../../shared/ui/Button';
 import { Mascot } from '../../../shared/ui/Mascot';
 import { useLessonStore } from '../../../stores/useLessonStore';
 
@@ -13,7 +12,7 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isActive, setIsActive] = useState(false);
   const { isConnected, isConnecting, error, connect, disconnect, sendAudioData, sendVideoData, sendClientContent } = useGeminiLive();
-  const { lessonPath, currentStepIndex, isPracticeModeActive, setPracticeModeActive, isBossStage, finalScore, feedback, status: feedbackStatus, isLessonComplete, mascotEmotion } = useLessonStore();
+  const { lessonPath, currentStepIndex, isPracticeModeActive, setPracticeModeActive, isBossStage, feedback, status: feedbackStatus, isLessonComplete, mascotEmotion } = useLessonStore();
   const [isRecordingBuffer, setIsRecordingBuffer] = useState(false);
 
   const handleStart = async () => {
@@ -144,157 +143,204 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
   }, [disconnect]);
 
   return (
-    <div className="flex flex-col w-full space-y-4 relative">
-       {/* Hidden video element required for browser capture API */}
-       <video ref={videoRef} className="hidden" muted playsInline />
+    <div className="flex flex-col w-full gap-4 relative">
+      {/* Hidden video element required for browser capture API */}
+      <video ref={videoRef} className="hidden" muted playsInline />
 
-       {/* Floating mascot: shows current AI emotion, bottom-right corner */}
-       {isActive && (
-         <div className="fixed bottom-28 right-4 z-40 pointer-events-none">
-           <Mascot
-             emotion={mascotEmotion}
-             size={88}
-             showMessage={mascotEmotion !== 'idle' && mascotEmotion !== 'thinking'}
-             autoRevertToIdle={true}
-             autoRevertDelay={4000}
-           />
-         </div>
-       )}
-       
-       <div className="bg-card border border-border rounded-2xl p-6 text-center space-y-4 relative z-20 shadow-[0_4px_0_0_var(--color-border)]">
-          <h2 className="text-xl font-bold text-card-foreground">Live AI Tutor</h2>
-          
-          {/* Duolingo Style Tracker Stepper */}
+      {/* Floating mascot — bottom-right corner, only during active session */}
+      {isActive && (
+        <div className="fixed bottom-28 right-4 z-40 pointer-events-none md:bottom-8">
+          <Mascot
+            emotion={mascotEmotion}
+            size={88}
+            showMessage={mascotEmotion !== 'idle' && mascotEmotion !== 'thinking'}
+            autoRevertToIdle={true}
+            autoRevertDelay={4000}
+          />
+        </div>
+      )}
+
+      {/* ── Main Session Card ── */}
+      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/30 backdrop-blur-xl shadow-2xl shadow-black/40">
+        {/* Status accent line */}
+        <div
+          className={`h-1 w-full transition-all duration-700 ${
+            isPracticeModeActive
+              ? 'bg-gradient-to-r from-red-500 via-orange-500 to-red-500 animate-pulse'
+              : isConnected
+              ? 'bg-gradient-to-r from-primary via-secondary to-primary'
+              : 'bg-white/10'
+          }`}
+        />
+
+        <div className="p-5 md:p-6 space-y-5">
+          {/* Header row: title + status pill */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="text-lg font-black text-white tracking-tight uppercase">
+              🤟 Live AI Tutor
+            </h2>
+            <div
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border transition-all duration-300 ${
+                isPracticeModeActive
+                  ? 'bg-red-500/15 border-red-500/30 text-red-400'
+                  : isConnected
+                  ? 'bg-primary/15 border-primary/30 text-primary'
+                  : 'bg-white/5 border-white/10 text-muted-foreground'
+              }`}
+            >
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  isPracticeModeActive
+                    ? 'bg-red-500 animate-ping'
+                    : isConnected
+                    ? 'bg-primary animate-pulse'
+                    : 'bg-muted-foreground'
+                }`}
+              />
+              {isPracticeModeActive
+                ? 'RECORDING'
+                : isConnecting
+                ? 'Connecting…'
+                : isConnected
+                ? 'AI Listening'
+                : 'Ready'}
+            </div>
+          </div>
+
+          {/* Error banner */}
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-3 text-sm text-red-400">
+              ⚠️ {error}
+            </div>
+          )}
+
+          {/* ── Word Progress Stepper ── */}
           {isActive && (
-            <div className="flex flex-wrap items-center justify-center py-2 gap-y-3 w-full max-w-sm mx-auto">
+            <div className="flex flex-wrap items-center justify-center gap-y-2 gap-x-1">
               {lessonPath.map((lessonWord, index) => {
                 const word = lessonWord.word;
                 const isCompleted = index < currentStepIndex;
-                const isCurrent = index === currentStepIndex;
+                const isCurrent = index === currentStepIndex && !isBossStage;
                 return (
                   <div key={word} className="flex items-center">
-                    <div className={`
-                      flex items-center justify-center h-9 sm:h-10 px-3 sm:px-4 rounded-full font-bold text-xs sm:text-sm transition-all duration-300
-                      ${isCompleted ? 'bg-primary text-primary-foreground' : ''}
-                      ${isCurrent ? 'bg-primary/20 text-primary border-2 border-primary shadow-[0_0_15px_rgba(255,255,255,0.2)]' : ''}
-                      ${!isCompleted && !isCurrent ? 'bg-muted text-muted-foreground border-2 border-transparent opacity-60' : ''}
-                    `}>
-                      {isCompleted && <span className="mr-1 sm:mr-1.5">✓</span>}
-                      {!isCompleted && !isCurrent && <span className="mr-1 sm:mr-1.5 text-[0.65rem] sm:text-xs">🔒</span>}
+                    <div
+                      className={`
+                        flex items-center justify-center px-3 py-1.5 rounded-full font-bold text-xs transition-all duration-400
+                        ${isCompleted
+                          ? 'bg-primary text-primary-foreground shadow-[0_0_12px_rgba(168,85,247,0.5)]'
+                          : isCurrent
+                          ? 'bg-primary/20 text-primary border-2 border-primary shadow-[0_0_16px_rgba(168,85,247,0.35)] scale-105'
+                          : 'bg-white/5 text-muted-foreground/50 border border-white/8'
+                        }
+                      `}
+                    >
+                      {isCompleted && <span className="mr-1 text-[10px]">✓</span>}
+                      {!isCompleted && !isCurrent && <span className="mr-1 text-[9px]">🔒</span>}
                       <span className="capitalize">{word}</span>
                     </div>
                     {index < lessonPath.length - 1 && (
-                      <div className={`w-3 sm:w-6 h-1 sm:h-1.5 rounded-full mx-1 sm:mx-1.5 transition-colors duration-300 shrink-0 ${isCompleted ? 'bg-primary' : 'bg-muted'}`} />
+                      <div
+                        className={`w-4 h-0.5 mx-1 rounded-full transition-colors duration-300 ${
+                          isCompleted ? 'bg-primary' : 'bg-white/10'
+                        }`}
+                      />
                     )}
                   </div>
                 );
               })}
             </div>
           )}
-          
-          {error && <div className="text-destructive bg-destructive/10 p-3 rounded-xl text-sm">{error}</div>}
-          
-          <div className="flex justify-center items-center space-x-2 bg-muted/50 py-2 px-4 rounded-full w-fit mx-auto border border-border/50">
-             <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-primary shadow-[0_0_10px_var(--color-primary)] animate-pulse' : 'bg-muted-foreground'}`} />
-             <span className="text-muted-foreground font-medium text-sm tracking-wide">
-                {isConnecting ? "✨ Preparing next sign..." : isConnected ? "AI is Listening" : "System Ready"}
-             </span>
-          </div>
-          
-          {/* Practice Mode Controls */}
-          {isActive && isConnected && !isLessonComplete && (
-             <div className="py-4 h-[120px] flex items-center justify-center">
-                
-                {!isPracticeModeActive ? (
-                   <div className="flex flex-col items-center w-full">
-                      {isBossStage && (
-                         <div className="mb-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 w-full animate-in slide-in-from-bottom-2">
-                             <h3 className="text-yellow-500 font-bold mb-1">👑 Final Challenge!</h3>
-                             <p className="text-sm text-muted-foreground font-medium">Sign the full sentence fluidly:</p>
-                             <p className="text-lg font-black text-foreground capitalize italic mt-1 bg-background/50 py-1 rounded-md">{lessonPath.map(w => w.word).join(" ")}</p>
-                         </div>
-                      )}
-                      <Button onClick={startPracticeMode} size="lg" className="w-full max-w-[200px] shadow-lg text-lg py-6" variant="primary">
-                         I'm Ready 👍
-                      </Button>
-                   </div>
-                ) : (
-                   <div className="flex flex-col items-center space-y-3 w-full animate-in fade-in zoom-in duration-300">
-                      <div className="bg-red-500/10 text-red-500 border border-red-500/20 px-4 py-1.5 rounded-full text-sm font-bold animate-pulse flex items-center">
-                         <div className="w-2 h-2 bg-red-500 rounded-full mr-2"></div>
-                         LIVE RECORDING
-                      </div>
-                      <p className="text-sm text-muted-foreground font-medium">Say "Done" or give a Thumbs Up when finished.</p>
-                      <Button 
-                         onClick={endPracticeMode} 
-                         variant="secondary" 
-                         className={`w-full max-w-[200px] border-border bg-card shadow-sm hover:bg-muted ${isRecordingBuffer ? 'opacity-50 cursor-not-allowed' : ''}`} 
-                         size="lg"
-                         disabled={isRecordingBuffer}
-                      >
-                         {isRecordingBuffer ? 'Recording...' : 'Done / Finish'}
-                      </Button>
-                   </div>
-                )}
-                
-             </div>
-           )}
 
-           {/* Lesson-Phase Feedback Card: shows specific_feedback from mark_sign_incorrect.
-               Persists between attempts until cleared by the next trigger_action_window. */}
-           {isActive && isConnected && !isLessonComplete && feedback && (
-              <div className={`mx-auto w-full animate-in fade-in slide-in-from-bottom-2 duration-300 rounded-lg p-3 border text-sm text-left mt-1 ${
-                 feedbackStatus === 'error'
-                   ? 'bg-red-500/10 border-red-500/20 text-red-400'
-                   : 'bg-muted/40 border-border/50 text-muted-foreground'
-              }`}>
-                 <span className="font-semibold mr-1">{feedbackStatus === 'error' ? '❌' : 'ℹ️'}</span>
-                 {feedback}
-              </div>
-           )}
-
-           {/* Enhanced Victory State */}
-          {isLessonComplete && (
-             <div className="py-6 flex flex-col items-center space-y-4 animate-in zoom-in slide-in-from-bottom-4 duration-500">
-                <div className="bg-green-500/20 text-green-500 rounded-full p-4 mb-2">
-                   <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                   </svg>
+          {/* ── Boss Stage Card ── */}
+          {isActive && isBossStage && !isPracticeModeActive && (
+            <div className="bg-yellow-500/8 border border-yellow-500/25 rounded-2xl p-4 space-y-2 animate-in slide-in-from-bottom-2 duration-400">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">👑</span>
+                <div>
+                  <p className="text-sm font-black text-yellow-400 uppercase tracking-wider">Final Challenge!</p>
+                  <p className="text-xs text-muted-foreground">Sign the full sentence fluently:</p>
                 </div>
-                <h3 className="text-2xl font-black text-foreground">Sentence Complete!</h3>
-                
-                {finalScore !== null && (
-                    <div className="flex flex-col items-center bg-card border border-border rounded-xl p-4 w-full max-w-sm shadow-sm">
-                       <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2">Fluency Rating</span>
-                       <div className="flex space-x-1">
-                          {[1, 2, 3].map((star) => (
-                             <svg key={star} xmlns="http://www.w3.org/2000/svg" className={`h-8 w-8 ${star <= finalScore ? 'text-yellow-400 fill-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.6)]' : 'text-muted-foreground/30'}`} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                               <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                             </svg>
-                          ))}
-                       </div>
-                       {feedback && (
-                           <p className="mt-4 text-sm text-foreground italic bg-muted/40 p-3 rounded-lg border border-border/50 text-left">
-                               "{feedback}"
-                           </p>
-                       )}
-                    </div>
-                )}
-             </div>
+              </div>
+              <div className="bg-black/30 rounded-xl px-4 py-3 border border-yellow-500/15">
+                <p className="text-base font-black text-foreground capitalize tracking-wide text-center">
+                  {lessonPath.map(w => w.word).join(' ')}
+                </p>
+              </div>
+            </div>
           )}
-          
-          <div className="pt-2">
-            {!isActive ? (
-               <Button onClick={handleStart} disabled={isConnecting} className="w-full shadow-lg" size="lg" variant="primary">
-                  ACTIVATE SENSORS
-               </Button>
-            ) : (
-               <Button onClick={handleStop} className="w-full mt-4" variant="danger" size="lg">
-                  END SESSION
-               </Button>
-            )}
-          </div>
-       </div>
+
+          {/* ── Feedback Banner ── */}
+          {isActive && isConnected && !isLessonComplete && feedback && (
+            <div
+              className={`flex items-start gap-3 rounded-2xl px-4 py-3 border text-sm animate-in fade-in slide-in-from-bottom-2 duration-300 ${
+                feedbackStatus === 'error'
+                  ? 'bg-red-500/10 border-red-500/20 text-red-300'
+                  : 'bg-primary/8 border-primary/20 text-foreground/80'
+              }`}
+            >
+              <span className="text-base shrink-0 mt-0.5">
+                {feedbackStatus === 'error' ? '❌' : 'ℹ️'}
+              </span>
+              <p className="leading-snug">{feedback}</p>
+            </div>
+          )}
+
+          {/* ── Practice Mode Controls ── */}
+          {isActive && isConnected && !isLessonComplete && (
+            <div className="flex flex-col items-center gap-3">
+              {!isPracticeModeActive ? (
+                <button
+                  onClick={startPracticeMode}
+                  className="w-full max-w-xs bg-primary hover:bg-primary/90 active:scale-95 text-white font-black text-base uppercase tracking-widest rounded-2xl py-4 shadow-lg shadow-primary/30 transition-all duration-200"
+                >
+                  I'm Ready 👍
+                </button>
+              ) : (
+                <div className="w-full flex flex-col items-center gap-3 animate-in fade-in zoom-in duration-300">
+                  <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-full text-xs font-bold">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
+                    LIVE — Sign now!
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center">
+                    Say <strong className="text-foreground">"Done"</strong> or tap button when finished
+                  </p>
+                  <button
+                    onClick={endPracticeMode}
+                    disabled={isRecordingBuffer}
+                    className={`w-full max-w-xs border border-white/15 bg-white/5 hover:bg-white/10 text-foreground font-bold text-sm rounded-2xl py-3 transition-all duration-200 ${
+                      isRecordingBuffer ? 'opacity-40 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    {isRecordingBuffer ? '⏳ Recording…' : '✅ Done / Finish'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Action Footer ── */}
+        <div className="px-5 pb-5 md:px-6 md:pb-6 border-t border-white/5 pt-4">
+          {!isActive ? (
+            <button
+              onClick={handleStart}
+              disabled={isConnecting}
+              className="w-full bg-gradient-to-r from-primary to-indigo-600 hover:opacity-95 active:scale-[0.98] text-white font-black text-base uppercase tracking-widest rounded-2xl py-4 shadow-xl shadow-primary/30 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isConnecting ? '✨ Starting…' : '🎙️ Start Session'}
+            </button>
+          ) : (
+            <button
+              onClick={handleStop}
+              className="w-full border border-red-500/25 bg-red-500/8 hover:bg-red-500/15 text-red-400 font-bold text-sm rounded-2xl py-3 transition-all duration-200"
+            >
+              End Session
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
+
+
