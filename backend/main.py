@@ -90,25 +90,25 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
         '''
         
         # Manually define the schema to bypass Pydantic 2.12 nested $ref bugs on Cloud Run
-        # Using string types instead of enums for maximum compatibility
+        # Using uppercase strings to match Pydantic's literal expectations exactly
         lesson_schema = types.Schema(
-            type="object",
+            type="OBJECT",
             properties={
-                "lessonId": types.Schema(type="string"),
-                "title": types.Schema(type="string"),
-                "description": types.Schema(type="string"),
+                "lessonId": types.Schema(type="STRING"),
+                "title": types.Schema(type="STRING"),
+                "description": types.Schema(type="STRING"),
                 "path": types.Schema(
-                    type="array",
+                    type="ARRAY",
                     items=types.Schema(
-                        type="object",
+                        type="OBJECT",
                         properties={
-                            "word": types.Schema(type="string"),
-                            "description": types.Schema(type="string"),
+                            "word": types.Schema(type="STRING"),
+                            "description": types.Schema(type="STRING"),
                         },
                         required=["word", "description"]
                     )
                 ),
-                "bossStageSentence": types.Schema(type="string"),
+                "bossStageSentence": types.Schema(type="STRING"),
             },
             required=["lessonId", "title", "description", "path", "bossStageSentence"]
         )
