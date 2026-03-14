@@ -66,16 +66,9 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
     on a natural language prompt from the user.
     """
     try:
-        # Re-use the existing google.auth library to get the project ID dynamically
-        credentials, project = google.auth.default(
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
-        
-        # Initialize GenAI Client explicitly pointing to the Vertex backend
+        # Use standard Gemini API with API Key (avoids Vertex AI region/version issues)
         client = genai.Client(
-            vertexai=True,
-            project=project,
-            location="global"
+            api_key=os.environ["GOOGLE_API_KEY"]
         )
         
         system_instruction = '''

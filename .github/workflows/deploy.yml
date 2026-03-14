@@ -66,3 +66,4 @@ jobs:
           region: '${{ env.REGION }}'
           image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/${{ env.SERVICE_NAME }}:${{ github.sha }}'
           flags: '--allow-unauthenticated'
+          secrets: 'GOOGLE_API_KEY=GOOGLE_API_KEY:latest'
