@@ -88,9 +88,10 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
         5. Provide the 'bossStageSentence', which is just the core words separated by spaces.
         '''
         
-        # Following the Gemini 3.1 Flash-Lite patterns from the provided documentation
-        # Using raw dictionaries to bypass buggy SDK transformers
-        lesson_schema = {
+        # Bulletproof method: Embed schema in system prompt & use JSON mode
+        # This bypasses all SDK version/transformer bugs entirely.
+        schema_text = """
+        {
             "type": "object",
             "properties": {
                 "lessonId": {"type": "string"},
@@ -102,24 +103,25 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
                         "type": "object",
                         "properties": {
                             "word": {"type": "string"},
-                            "description": {"type": "string"},
+                            "description": {"type": "string"}
                         },
                         "required": ["word", "description"]
                     }
                 },
-                "bossStageSentence": {"type": "string"},
+                "bossStageSentence": {"type": "string"}
             },
             "required": ["lessonId", "title", "description", "path", "bossStageSentence"]
         }
+        """
         
-        # Exact config structure from the Gemini 3.1 Flash-Lite developer guide
+        full_system_instruction = f"{system_instruction}\n\nIMPORTANT: You must output valid JSON that strictly follows this schema:\n{schema_text}"
+        
         response = await client.aio.models.generate_content(
-            model='gemini-3.1-flash-lite-preview',
+            model='gemini-1.5-flash', # Using proven stable model
             contents=req.prompt,
             config={
-                "system_instruction": system_instruction,
+                "system_instruction": full_system_instruction,
                 "response_mime_type": "application/json",
-                "response_json_schema": lesson_schema,
                 "temperature": 0.2
             },
         )
