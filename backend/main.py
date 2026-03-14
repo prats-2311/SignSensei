@@ -114,7 +114,7 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
         )
         
         response = await client.aio.models.generate_content(
-            model='gemini-1.5-flash', # Using GA stable model
+            model='gemini-3.1-flash-lite-preview', # Using the latest Flash-Lite model
             contents=req.prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
