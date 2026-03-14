@@ -24,7 +24,8 @@ export function AvatarCanvas({ signName, isModalContext = false }: AvatarCanvasP
        setIsError(false);
        
        try {
-           const res = await fetch(`http://localhost:8000/api/sign/${signName}`);
+           const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+           const res = await fetch(`${baseUrl}/api/sign/${signName}`);
            if (!res.ok) throw new Error("Video not found");
            
            const data = await res.json();

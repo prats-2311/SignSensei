@@ -13,7 +13,8 @@ log.methodFactory = function (methodName, logLevel, loggerName) {
     rawMethod(`[${timestamp}] [${methodName.toUpperCase()}] ${message}`, ...args);
     
     // Ship to Backend if not running locally, or for our diagnostic purposes
-    fetch('http://localhost:8000/api/diagnostics/log', {
+    const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+    fetch(`${baseUrl}/api/diagnostics/log`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -75,7 +75,7 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
         client = genai.Client(
             vertexai=True,
             project=project,
-            location="us-central1"
+            location="global"
         )
         
         system_instruction = '''
