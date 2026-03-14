@@ -11,11 +11,14 @@ import { Input } from './shared/ui/Input';
 import { ToastController } from './shared/ui/Toast';
 import { Sidebar } from './shared/ui/Sidebar';
 import { RightRail } from './shared/ui/RightRail';
+import { SplashScreen } from './shared/ui/SplashScreen';
+import { TourOverlay } from './shared/ui/TourOverlay';
 import { AvatarCanvas } from './features/live-session/components/AvatarCanvas';
 import { LiveSession } from './features/live-session/components/LiveSession';
 import { AudioHapticController } from './shared/ui/AudioHapticController';
 import { VictoryModal } from './shared/ui/VictoryModal';
 import { DecksScreen } from './features/dashboard/DecksScreen';
+import { ProfileScreen } from './features/profile/ProfileScreen';
 import { LESSONS } from './data/curriculum';
 import type { LessonData } from './data/curriculum';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -265,15 +268,35 @@ function LessonScreen() {
 // --- Main App Shell ---
 
 function AppContent() {
-  const { streak, xp, gems } = useUserStore();
+  const { streak, xp, gems, hasCompletedTour } = useUserStore();
   const { referenceSign, setReferenceSign, isLessonComplete, resetLesson, setAiPaused } = useLessonStore();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Splash: show on fresh session (not on every tab reload after tour done)
+  const [showSplash, setShowSplash] = useState(() => {
+    if (typeof sessionStorage === 'undefined') return false;
+    return !sessionStorage.getItem('ss_splash_shown');
+  });
+  const [showTour, setShowTour] = useState(false);
 
   const currentLevel = Math.floor(xp / 100) + 1;
   const isLessonRoute = location.pathname.startsWith('/lesson');
   const showBottomNav = !isLessonRoute;
   const isActive = (path: string) => location.pathname === path;
+
+  // After splash completes, optionally show tour
+  const handleSplashComplete = () => {
+    sessionStorage.setItem('ss_splash_shown', '1');
+    setShowSplash(false);
+    if (!hasCompletedTour) {
+      setShowTour(true);
+    }
+  };
+
+  if (showSplash) {
+    return <SplashScreen onComplete={handleSplashComplete} />;
+  }
 
   if (isLessonComplete) {
     return (
@@ -337,9 +360,15 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<MapScreen />} />
           <Route path="/decks" element={<DecksScreen />} />
+          <Route path="/profile" element={<ProfileScreen />} />
           <Route path="/lesson/:lessonId" element={<LessonScreen />} />
         </Routes>
       </main>
+
+      {/* Tour Overlay — shows once on first use */}
+      {showTour && (
+        <TourOverlay onComplete={() => setShowTour(false)} />
+      )}
 
       {/* Bottom Navigation — mobile only */}
       {showBottomNav && (
