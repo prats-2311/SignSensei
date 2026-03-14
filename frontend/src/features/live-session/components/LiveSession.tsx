@@ -66,6 +66,8 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
   // Trigger native model-driven recording phase immediately with a HARD timeout
   const startPracticeMode = useCallback(() => {
       setPracticeModeActive(true);
+      // Show 'thinking' mascot immediately when recording starts
+      useLessonStore.getState().setMascotEmotion('thinking');
 
       // FIX (I'm Ready Button): Inject a clientContent message to Gemini to force trigger_action_window.
       // The button sets the camera running immediately (good UX), and this injection ensures Gemini
@@ -147,21 +149,35 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
       {/* Hidden video element required for browser capture API */}
       <video ref={videoRef} className="hidden" muted playsInline />
 
-      {/* Floating mascot — bottom-right corner, only during active session */}
+      {/* Mobile-only floating mascot — hidden on md+ */}
       {isActive && (
-        <div className="fixed bottom-28 right-4 z-40 pointer-events-none md:bottom-8">
+        <div className="fixed bottom-28 right-4 z-40 pointer-events-none md:hidden">
           <Mascot
             emotion={mascotEmotion}
-            size={88}
+            size={96}
             showMessage={mascotEmotion !== 'idle' && mascotEmotion !== 'thinking'}
-            autoRevertToIdle={true}
-            autoRevertDelay={4000}
+            autoRevertToIdle={false}
           />
         </div>
       )}
 
+      {/* Outer flex row: desktop shows [mascot sidebar] + [card] side by side */}
+      <div className="flex items-center gap-6 justify-center">
+
+        {/* Desktop sidebar mascot — visible only on md+ */}
+        {isActive && (
+          <div className="hidden md:flex flex-col items-center gap-3 shrink-0 self-center">
+            <Mascot
+              emotion={mascotEmotion}
+              size={172}
+              showMessage={mascotEmotion !== 'idle'}
+              autoRevertToIdle={false}
+            />
+          </div>
+        )}
+
       {/* ── Main Session Card ── */}
-      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/30 backdrop-blur-xl shadow-2xl shadow-black/40">
+      <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/30 backdrop-blur-xl shadow-2xl shadow-black/40 w-full md:max-w-lg">
         {/* Status accent line */}
         <div
           className={`h-1 w-full transition-all duration-700 ${
@@ -339,6 +355,7 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
           )}
         </div>
       </div>
+      </div>{/* end outer flex row */}
     </div>
   );
 }

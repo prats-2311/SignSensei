@@ -123,24 +123,29 @@ export function Mascot({
         )}
       </AnimatePresence>
 
-      {/* Mascot image */}
-      <motion.div
-        key={resolvedEmotion}
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1, ...variant }}
-        exit={{ scale: 0.8, opacity: 0 }}
+      {/* Mascot image — clipped to circle */}
+      <div
         style={{ width: size, height: size }}
-        className="relative select-none"
-        aria-hidden="true"
+        className="relative rounded-full overflow-hidden ring-2 ring-primary/30 shadow-[0_0_18px_rgba(168,85,247,0.4)] bg-black/30 select-none"
       >
-        <img
-          src={imgSrc}
-          alt={`Mascot: ${resolvedEmotion}`}
-          className="w-full h-full object-contain drop-shadow-[0_8px_24px_rgba(168,85,247,0.5)]"
-          style={{ mixBlendMode: 'screen' }}
-          draggable={false}
-        />
-      </motion.div>
+        <motion.div
+          key={resolvedEmotion}
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1, ...variant }}
+          exit={{ scale: 0.8, opacity: 0 }}
+          style={{ width: size, height: size }}
+          className="relative"
+          aria-hidden="true"
+        >
+          <img
+            src={imgSrc}
+            alt={`Mascot: ${resolvedEmotion}`}
+            className="w-full h-full object-cover"
+            style={{ mixBlendMode: 'screen' }}
+            draggable={false}
+          />
+        </motion.div>
+      </div>
     </div>
   );
 }
