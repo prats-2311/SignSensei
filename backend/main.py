@@ -90,30 +90,31 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
         '''
         
         # Manually define the schema to bypass Pydantic 2.12 nested $ref bugs on Cloud Run
+        # Using string types instead of enums for maximum compatibility
         lesson_schema = types.Schema(
-            type=types.Type.OBJECT,
+            type="object",
             properties={
-                "lessonId": types.Schema(type=types.Type.STRING),
-                "title": types.Schema(type=types.Type.STRING),
-                "description": types.Schema(type=types.Type.STRING),
+                "lessonId": types.Schema(type="string"),
+                "title": types.Schema(type="string"),
+                "description": types.Schema(type="string"),
                 "path": types.Schema(
-                    type=types.Type.ARRAY,
+                    type="array",
                     items=types.Schema(
-                        type=types.Type.OBJECT,
+                        type="object",
                         properties={
-                            "word": types.Schema(type=types.Type.STRING),
-                            "description": types.Schema(type=types.Type.STRING),
+                            "word": types.Schema(type="string"),
+                            "description": types.Schema(type="string"),
                         },
                         required=["word", "description"]
                     )
                 ),
-                "bossStageSentence": types.Schema(type=types.Type.STRING),
+                "bossStageSentence": types.Schema(type="string"),
             },
             required=["lessonId", "title", "description", "path", "bossStageSentence"]
         )
         
         response = await client.aio.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-2.0-flash', # Fixed model name to 2.0
             contents=req.prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
@@ -128,7 +129,9 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
         return result_dict
         
     except Exception as e:
+        import traceback
         print(f"Error generating dynamic lesson: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail="Failed to generate lesson via Gemini API")
 
 # Simple in-memory cache to prevent spamming signasl.org during a session
