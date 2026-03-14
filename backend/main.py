@@ -89,13 +89,36 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
         5. Provide the 'bossStageSentence', which is just the core words separated by spaces.
         '''
         
+        # Manually define the schema to bypass Pydantic 2.12 nested $ref bugs on Cloud Run
+        lesson_schema = types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "lessonId": types.Schema(type=types.Type.STRING),
+                "title": types.Schema(type=types.Type.STRING),
+                "description": types.Schema(type=types.Type.STRING),
+                "path": types.Schema(
+                    type=types.Type.ARRAY,
+                    items=types.Schema(
+                        type=types.Type.OBJECT,
+                        properties={
+                            "word": types.Schema(type=types.Type.STRING),
+                            "description": types.Schema(type=types.Type.STRING),
+                        },
+                        required=["word", "description"]
+                    )
+                ),
+                "bossStageSentence": types.Schema(type=types.Type.STRING),
+            },
+            required=["lessonId", "title", "description", "path", "bossStageSentence"]
+        )
+        
         response = await client.aio.models.generate_content(
             model='gemini-2.5-flash',
             contents=req.prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
                 response_mime_type="application/json",
-                response_schema=GenerateLessonResponse,
+                response_schema=lesson_schema,
                 temperature=0.2 # Keep it deterministic and factual
             ),
         )
