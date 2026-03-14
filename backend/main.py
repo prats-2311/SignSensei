@@ -89,39 +89,40 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
         5. Provide the 'bossStageSentence', which is just the core words separated by spaces.
         '''
         
-        # Manually define the schema to bypass Pydantic 2.12 nested $ref bugs on Cloud Run
-        # Using uppercase strings to match Pydantic's literal expectations exactly
-        lesson_schema = types.Schema(
-            type="OBJECT",
-            properties={
-                "lessonId": types.Schema(type="STRING"),
-                "title": types.Schema(type="STRING"),
-                "description": types.Schema(type="STRING"),
-                "path": types.Schema(
-                    type="ARRAY",
-                    items=types.Schema(
-                        type="OBJECT",
-                        properties={
-                            "word": types.Schema(type="STRING"),
-                            "description": types.Schema(type="STRING"),
+        # Following the Gemini 3.1 Flash-Lite patterns from the provided documentation
+        # Using raw dictionaries to bypass buggy SDK transformers
+        lesson_schema = {
+            "type": "object",
+            "properties": {
+                "lessonId": {"type": "string"},
+                "title": {"type": "string"},
+                "description": {"type": "string"},
+                "path": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "word": {"type": "string"},
+                            "description": {"type": "string"},
                         },
-                        required=["word", "description"]
-                    )
-                ),
-                "bossStageSentence": types.Schema(type="STRING"),
+                        "required": ["word", "description"]
+                    }
+                },
+                "bossStageSentence": {"type": "string"},
             },
-            required=["lessonId", "title", "description", "path", "bossStageSentence"]
-        )
+            "required": ["lessonId", "title", "description", "path", "bossStageSentence"]
+        }
         
+        # Exact config structure from the Gemini 3.1 Flash-Lite developer guide
         response = await client.aio.models.generate_content(
-            model='gemini-3.1-flash-lite-preview', # Using the latest Flash-Lite model
+            model='gemini-3.1-flash-lite-preview',
             contents=req.prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                response_mime_type="application/json",
-                response_schema=lesson_schema,
-                temperature=0.2 # Keep it deterministic and factual
-            ),
+            config={
+                "system_instruction": system_instruction,
+                "response_mime_type": "application/json",
+                "response_json_schema": lesson_schema,
+                "temperature": 0.2
+            },
         )
         
         import json
