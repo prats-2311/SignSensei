@@ -10,11 +10,15 @@ import { SkeletonCard } from '../../shared/ui/Skeleton';
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog';
 import { Trash2, Globe, Lock, Play, Layers } from 'lucide-react';
 
+const DECK_CATEGORIES = ['All', 'Greetings', 'Food & Drink', 'Travel', 'Emotions', 'Numbers & Time', 'Family', 'Work & School', 'Other'] as const;
+type DeckCategory = typeof DECK_CATEGORIES[number];
+
 export function DecksScreen() {
   const [myDecks, setMyDecks] = useState<any[]>([]);
   const [communityDecks, setCommunityDecks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [deletingDeckId, setDeletingDeckId] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<DeckCategory>('All');
   const { initializeLesson } = useLessonStore();
   const navigate = useNavigate();
 
@@ -130,23 +134,47 @@ export function DecksScreen() {
 
             {/* Community Decks Section */}
             <div>
-              <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-                <Globe className="w-4 h-4" />
-                Community Decks
-              </h2>
-              {communityDecks.filter(d => !myDecks.find(md => md.id === d.id)).length === 0 ? (
-                <GlassCard className="py-10 flex flex-col items-center gap-3 text-center border-dashed">
-                  <Globe className="w-8 h-8 text-muted-foreground/40" />
-                  <p className="text-sm text-muted-foreground">
-                    No community decks yet.<br />
-                    Be the first to share one!
-                  </p>
-                </GlassCard>
-              ) : (
-                <div className="space-y-4">
-                  {communityDecks
-                    .filter(d => !myDecks.find(md => md.id === d.id))
-                    .map(deck => (
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                  <Globe className="w-4 h-4" />
+                  Community Decks
+                </h2>
+              </div>
+
+              {/* Category filter pill bar */}
+              <div className="flex gap-2 overflow-x-auto pb-2 mb-4 no-scrollbar -mx-0.5 px-0.5">
+                {DECK_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`shrink-0 text-xs font-bold px-3.5 py-1.5 rounded-full border transition-all duration-200 ${
+                      selectedCategory === cat
+                        ? 'bg-primary text-white border-primary shadow-md shadow-primary/30'
+                        : 'bg-white/5 text-muted-foreground border-white/10 hover:border-white/20 hover:text-foreground'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {/* Filtered community decks */}
+              {(() => {
+                const filtered = communityDecks
+                  .filter(d => !myDecks.find(md => md.id === d.id))
+                  .filter(d => selectedCategory === 'All' || (d.category ?? 'Other') === selectedCategory);
+                return filtered.length === 0 ? (
+                  <GlassCard className="py-10 flex flex-col items-center gap-3 text-center border-dashed">
+                    <Globe className="w-8 h-8 text-muted-foreground/40" />
+                    <p className="text-sm text-muted-foreground">
+                      {selectedCategory === 'All'
+                        ? <>No community decks yet.<br />Be the first to share one!</>
+                        : <>No <strong>{selectedCategory}</strong> decks yet.<br />Generate one and make it public!</>}
+                    </p>
+                  </GlassCard>
+                ) : (
+                  <div className="space-y-4">
+                    {filtered.map(deck => (
                       <DeckCard
                         key={deck.id}
                         deck={deck}
@@ -155,10 +183,10 @@ export function DecksScreen() {
                         onTogglePublic={togglePublicStatus}
                         onDelete={(id) => setDeletingDeckId(id)}
                       />
-                    ))
-                  }
-                </div>
-              )}
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           </>
         )}
@@ -199,12 +227,20 @@ function DeckCard({
       <div className="h-0.5 w-full bg-gradient-to-r from-primary/60 via-secondary/60 to-transparent" />
 
       <div className="p-5 flex flex-col gap-3">
-        <div>
-          <h3 className="text-base font-bold text-white capitalize leading-tight">
-            {deck.title || deck.id.replace(/_/g, ' ')}
-          </h3>
-          {deck.prompt && (
-            <p className="text-xs text-muted-foreground italic mt-0.5">"{deck.prompt}"</p>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-bold text-white capitalize leading-tight">
+              {deck.title || deck.id.replace(/_/g, ' ')}
+            </h3>
+            {deck.prompt && (
+              <p className="text-xs text-muted-foreground italic mt-0.5 truncate">"{deck.prompt}"</p>
+            )}
+          </div>
+          {/* Category badge */}
+          {deck.category && (
+            <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider bg-secondary/15 text-secondary/80 border border-secondary/20 px-2 py-0.5 rounded-full">
+              {deck.category}
+            </span>
           )}
         </div>
 

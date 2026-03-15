@@ -144,10 +144,51 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
      }
   }, [disconnect]);
 
+  const [isPipOpen, setIsPipOpen] = useState(true);
+
   return (
-    <div className="flex flex-col w-full gap-4 relative">
-      {/* Hidden video element required for browser capture API */}
-      <video ref={videoRef} className="hidden" muted playsInline />
+    <div className="flex flex-col w-full gap-4 relative items-center">
+      {/*
+        PiP Camera Self-View — ONE persistent <video> element, ALWAYS mounted.
+        CSS classes control appearance; we never conditionally unmount it.
+        This is critical: VideoCapture.startCamera() sets srcObject on the
+        exact DOM element once. If we remount/swap elements, the stream is lost.
+      */}
+      {/* Invisible sentinel ref-holder when session hasn't started yet –
+          keeps the ref valid before startCamera is called */}
+      <video
+        ref={videoRef}
+        muted
+        playsInline
+        onClick={() => { if (isActive) setIsPipOpen(v => !v); }}
+        aria-label={isPipOpen ? 'Hide camera preview' : 'Show camera preview'}
+        className={[
+          'fixed z-40 transition-all duration-300 ease-in-out object-cover cursor-pointer',
+          'bottom-28 left-4 md:bottom-8 md:left-6',
+          // Size and shape
+          isPipOpen
+            ? 'w-24 h-32 md:w-32 md:h-44 rounded-2xl'
+            : 'w-11 h-11 rounded-full',
+          // Border
+          isPipOpen && isPracticeModeActive
+            ? 'border-2 border-red-500/60 shadow-2xl shadow-black/60'
+            : isPipOpen
+            ? 'border-2 border-white/15 shadow-2xl shadow-black/60'
+            : 'border border-white/15 shadow-lg',
+          // Visibility — hide completely when session not started
+          isActive ? 'opacity-100' : 'opacity-0 pointer-events-none',
+        ].join(' ')}
+      />
+      {/* 📷 icon shown OVER the collapsed pip (pure overlay, no videoRef) */}
+      {isActive && !isPipOpen && (
+        <div
+          onClick={() => setIsPipOpen(true)}
+          className="fixed z-41 bottom-28 left-4 md:bottom-8 md:left-6 w-11 h-11 rounded-full bg-black/70 border border-white/20 backdrop-blur-sm flex items-center justify-center cursor-pointer shadow-lg pointer-events-auto"
+          aria-label="Show camera preview"
+        >
+          <span className="text-base">📷</span>
+        </div>
+      )}
 
       {/* Mobile-only floating mascot — hidden on md+ */}
       {isActive && (
@@ -161,20 +202,8 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
         </div>
       )}
 
-      {/* Outer flex row: desktop shows [mascot sidebar] + [card] side by side */}
-      <div className="flex items-center gap-6 justify-center">
-
-        {/* Desktop sidebar mascot — visible only on md+ */}
-        {isActive && (
-          <div className="hidden md:flex flex-col items-center gap-3 shrink-0 self-center">
-            <Mascot
-              emotion={mascotEmotion}
-              size={172}
-              showMessage={mascotEmotion !== 'idle'}
-              autoRevertToIdle={false}
-            />
-          </div>
-        )}
+      {/* ── Main Session Card + below-card mascot, centered column ── */}
+      <div className="flex flex-col items-center gap-5 w-full">
 
       {/* ── Main Session Card ── */}
       <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-black/30 backdrop-blur-xl shadow-2xl shadow-black/40 w-full md:max-w-lg">
@@ -355,7 +384,19 @@ export function LiveSession({ onEnd }: { onEnd: () => void }) {
           )}
         </div>
       </div>
-      </div>{/* end outer flex row */}
+        {/* ── Desktop mascot — centered below card, hidden on mobile ── */}
+        {isActive && (
+          <div className="hidden md:flex flex-col items-center pointer-events-none">
+            <Mascot
+              emotion={mascotEmotion}
+              size={130}
+              showMessage={mascotEmotion !== 'idle'}
+              autoRevertToIdle={false}
+            />
+          </div>
+        )}
+
+      </div>{/* end centered column */}
     </div>
   );
 }

@@ -8,6 +8,10 @@ export interface TourStep {
   position: 'top' | 'bottom' | 'left' | 'right' | 'center';
 }
 
+/**
+ * Steps ordered top → bottom on mobile to avoid scroll jumps:
+ * daily-goal (top) → ai-input → lesson-node → nav-decks (bottom) → nav-profile (bottom)
+ */
 export const TOUR_STEPS: TourStep[] = [
   {
     id: 'welcome',
@@ -17,10 +21,10 @@ export const TOUR_STEPS: TourStep[] = [
     position: 'center',
   },
   {
-    id: 'lesson-node',
-    target: '[data-tour="lesson-node"]',
-    title: "Lesson Nodes",
-    description: "Tap any glowing circle to start a lesson. Complete it to unlock the next one and earn stars!",
+    id: 'daily-goal',
+    target: '[data-tour="daily-goal"]',
+    title: "Your Daily Goal 🔥",
+    description: "Earn XP each day to keep your streak alive. Practice a little every day for the best results.",
     position: 'bottom',
   },
   {
@@ -31,10 +35,10 @@ export const TOUR_STEPS: TourStep[] = [
     position: 'bottom',
   },
   {
-    id: 'daily-goal',
-    target: '[data-tour="daily-goal"]',
-    title: "Daily Goal",
-    description: "Earn 100 XP each day to keep your streak alive. Practice a little every day for the best results.",
+    id: 'lesson-node',
+    target: '[data-tour="lesson-node"]',
+    title: "Lesson Nodes",
+    description: "Tap any glowing circle to start a lesson. Complete it to unlock the next one and earn stars!",
     position: 'bottom',
   },
   {
