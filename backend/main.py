@@ -63,6 +63,7 @@ class GenerateLessonResponse(BaseModel):
     description: str
     path: List[LessonWord]
     bossStageSentence: str
+    category: str  # One of the fixed category values
 
 @app.post("/api/generate-lesson", response_model=GenerateLessonResponse)
 async def generate_dynamic_lesson(req: GenerateLessonRequest):
@@ -84,6 +85,9 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
         3. Create a title and a short encouraging description for the lesson.
         4. Create a unique, URL-safe lessonId (e.g., 'custom_coffee_shop').
         5. Provide the 'bossStageSentence', which is just the core words separated by spaces.
+        6. Classify the lesson into exactly ONE of these categories based on the topic:
+           "Greetings", "Food & Drink", "Travel", "Emotions", "Numbers & Time", "Family", "Work & School", "Other"
+           Choose the most specific match. Use "Other" only if no other category fits.
         '''
         
         # Bulletproof method: Embed schema in system prompt & use JSON mode
@@ -106,9 +110,13 @@ async def generate_dynamic_lesson(req: GenerateLessonRequest):
                         "required": ["word", "description"]
                     }
                 },
-                "bossStageSentence": {"type": "string"}
+                "bossStageSentence": {"type": "string"},
+                "category": {
+                    "type": "string",
+                    "enum": ["Greetings", "Food & Drink", "Travel", "Emotions", "Numbers & Time", "Family", "Work & School", "Other"]
+                }
             },
-            "required": ["lessonId", "title", "description", "path", "bossStageSentence"]
+            "required": ["lessonId", "title", "description", "path", "bossStageSentence", "category"]
         }
         """
         

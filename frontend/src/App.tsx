@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Map, Layers, User, Lock, Star, Sparkles, Loader2, X } from 'lucide-react';
 import { useUserStore } from './stores/useUserStore';
@@ -59,6 +59,7 @@ function MapScreen() {
           title: lessonData.title,
           prompt: customPrompt,
           path: lessonData.path,
+          category: lessonData.category ?? 'Other',
           createdAt: serverTimestamp(),
           isPublic: false
         });
@@ -290,6 +291,14 @@ function AppContent() {
       setShowTour(true);
     }
   };
+
+  // FIX: Replay tour from ProfileScreen — sets hasCompletedTour=false then navigates here.
+  // The splash won't re-show (blocked by sessionStorage), so we watch the flag directly.
+  useEffect(() => {
+    if (!hasCompletedTour && !showSplash) {
+      setShowTour(true);
+    }
+  }, [hasCompletedTour, showSplash]);
 
   if (showSplash) {
     return <SplashScreen onComplete={handleSplashComplete} />;
