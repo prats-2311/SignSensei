@@ -40,6 +40,15 @@ export function useGeminiLive() {
   const isPostIncorrectRef = useRef<boolean>(false);
   
   const connect = useCallback(async (onAudioData?: (base64Audio: string) => void) => {
+    // SINGLETON GUARD: Prevent duplicate WebSocket connections.
+    // React Strict Mode (dev) double-mounts components, causing connect() to be called twice.
+    // If a connection is already open or in-progress, bail out immediately.
+    // This ensures only one Gemini session is ever alive at a time.
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+      if (onAudioData) audioCallbackRef.current = onAudioData;
+      return;
+    }
+
     if (onAudioData) audioCallbackRef.current = onAudioData;
     // FIX (Bug 1): Reset gating flags at the start of every new connection.
     // Without this, hasUserSignaledDone stays 'true' from the previous word's "Done" signal,
