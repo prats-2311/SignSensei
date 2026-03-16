@@ -36,7 +36,26 @@ It transforms ASL learning from passive video-watching into a **live, bidirectio
 ![SignSensei Deck & Community Architecture](./docs/architecture-deck-community.png)
 
 ---
+### 🧪 Reproducible Testing Instructions for Judges
 
+To evaluate and test this project, you do **not** need to run it locally. We have deployed a frictionless testing environment:
+
+1. **Access the App**: Open [https://signsensei.web.app](https://signsensei.web.app) in any modern desktop browser (Chrome recommended).
+2. **No Auth Required**: Click the **"Get Started"** button. The app uses Firebase Anonymous Auth, so no account creation is required to test the features.
+3. **Hardware Needed**: Ensure you have a working webcam and microphone. The app will prompt for permissions when you start a session.
+4. **Test the Core Flow**:
+   - Navigate to the **Saga Map** and click "The Basics".
+   - Click **Start Session**. Wait for the AI instructor to speak.
+   - Click **"I'm Ready"**. Perform the ASL sign for "Hello" (a salute motion from the forehead). 
+   - Wait for the AI's audio and visual feedback (via the mascot).
+5. **Test AI Generation**:
+   - Navigate to the **Decks** tab.
+   - Type a prompt like "basic medical signs" and click Generate.
+   - Test the generated lesson exactly like the predefined ones.
+
+*Note: For local development testing, follow the cloning and setup instructions above.*
+
+---
 ## ✨ Features
 
 ### 🎓 Live AI Tutoring Session
