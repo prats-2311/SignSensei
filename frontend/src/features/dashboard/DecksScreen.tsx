@@ -65,12 +65,23 @@ export function DecksScreen() {
   };
 
   const togglePublicStatus = async (deckId: string, currentStatus: boolean) => {
+    const newStatus = !currentStatus;
     try {
-      setMyDecks(prev => prev.map(d => d.id === deckId ? { ...d, isPublic: !currentStatus } : d));
-      await updateDoc(doc(db, 'decks', deckId), { isPublic: !currentStatus });
-      fetchDecks();
+      // Optimistically update myDecks immediately — no loading flash
+      setMyDecks(prev => prev.map(d => d.id === deckId ? { ...d, isPublic: newStatus } : d));
+      // Optimistically sync communityDecks: add when going public, remove when going private
+      if (newStatus) {
+        const deck = myDecks.find(d => d.id === deckId);
+        if (deck) setCommunityDecks(prev => [{ ...deck, isPublic: true }, ...prev]);
+      } else {
+        setCommunityDecks(prev => prev.filter(d => d.id !== deckId));
+      }
+      await updateDoc(doc(db, 'decks', deckId), { isPublic: newStatus });
     } catch (error) {
       console.error('Failed to toggle status:', error);
+      // Revert on failure and re-fetch to get ground truth
+      setMyDecks(prev => prev.map(d => d.id === deckId ? { ...d, isPublic: currentStatus } : d));
+      fetchDecks();
     }
   };
 
