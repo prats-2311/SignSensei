@@ -257,7 +257,9 @@ Active Target Word: '${activeWord}'
 Objective:
 1. Congratulate user on '${previousWord}'.
 2. Introduce '${activeWord}' and explain how to sign it.
-3. Stop speaking. Wait for audio input.
+3. Tell the user: "Say 'Ready' to begin, or say 'Show me the video'."
+4. Explain: "When you are done signing, clearly say 'Done' or 'Finished'."
+5. Stop speaking. Wait for audio input.
 
 [CRITICAL EXECUTION RULE]
 Phase 1 is Active. FORBIDDEN: 'user_is_resting_or_calibrating', 'trigger_grading_window', 'mark_sign_correct', 'mark_sign_incorrect'.
@@ -270,7 +272,9 @@ Active Target Word: '${activeWord}'
 
 Objective:
 1. Introduce '${activeWord}' and explain how to sign it.
-2. Stop speaking. Wait for audio input.
+2. Tell the user: "Say 'Ready' to begin, or say 'Show me the video'."
+3. Explain: "When you are done signing, clearly say 'Done' or 'Finished'."
+4. Stop speaking. Wait for audio input.
 
 [CRITICAL EXECUTION RULE]
 Phase 1 is Active. FORBIDDEN: 'user_is_resting_or_calibrating', 'trigger_grading_window', 'mark_sign_correct', 'mark_sign_incorrect'.
@@ -325,7 +329,8 @@ End transmission. Wait for Audio Input.`;
                // FIX (Edge Case 2 + 3): Gate gatekeeper on practiceModeActive AND use word-boundary
                // regex. Without this, saying "Done" in Phase 1 (e.g. to close a video) would
                // incorrectly arm the Trojan Horse. Also prevents substring matches like "well done".
-               const isDoneSignal = /\bdone\b/.test(lowerTranscript) || /\bfinished\b/.test(lowerTranscript);
+               // Broadened to catch speech-to-text anomalies (like "dan" or foreign characters like "दैट।")
+               const isDoneSignal = /\b(done|finished|that's it|i'm done|im done|dan|dan\.|dane|ton|down|then|them|दैट।)\b/i.test(lowerTranscript);
                const isPracticeActive = useLessonStore.getState().isPracticeModeActive;
                const isVideoOpen = useLessonStore.getState().referenceSign !== null;
                // FIX (Edge Case Video): Also suppress if a reference video is currently showing.
@@ -509,10 +514,10 @@ Do not speak. Do not evaluate yet. Wait for the grading instructions before asse
                 if (!isGradingWindowGrantedRef.current) {
                   logger.warn(`🚫 [Phase Guard] trigger_grading_window called without an authorization token. Rejecting.`);
                   const tgwRejectMsg = isPostIncorrectRef.current
-                    ? `[SYSTEM: trigger_grading_window rejected] Grading is already complete for this attempt. You are in Phase 1 — STANDBY. Remain completely SILENT. Do NOT call any tool.`
+                    ? `[SYSTEM: trigger_grading_window rejected] Duplicate call blocked. You have already evaluated this attempt. Return to Phase 1 Standby and wait for the user to signal readiness.`
                     : isGradingWindowActiveRef.current
                       ? `[SYSTEM: trigger_grading_window rejected] Phase 3 is already active from your previous call. Do not call this again. Wait for the grading instructions in the current response.`
-                      : `[SYSTEM: trigger_grading_window rejected] The 'Done' signal was received but the grading token is not yet armed. Do NOT speak. Call 'user_is_resting_or_calibrating' immediately — the system will inject the grading override in the next response. Do not change phases on your own.`;
+                      : `[SYSTEM: trigger_grading_window rejected] UNAUTHORIZED. The human has not signaled completion. You MUST wait for the [SYSTEM OVERRIDE: DONE SIGNAL RECEIVED] command. Return to looping 'user_is_resting_or_calibrating'.`;
                   responses.push({
                     id: call.id,
                     name: call.name,
